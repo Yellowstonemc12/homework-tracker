@@ -89,7 +89,13 @@ with tab1:
             grouped.setdefault(key, []).append(r)
 
         # Sort groups by oldest date first
-        sorted_groups = sorted(grouped.items(), key=lambda x: x[1][0]["Date"])
+        sorted_groups = sorted(
+            grouped.items(),
+            key=lambda x: (
+                int(x[0].split("|")[7].strip().replace("Primary ", "")),  # Level
+                x[1][0]["Date"]  # Oldest date first
+            )
+        )
         
         col1, col2 = st.columns(2)
         
