@@ -5,17 +5,32 @@ from datetime import datetime
 
 st.set_page_config(page_title="Homework Submission Tracker", page_icon="📘")
 
-BASE_DIR = Path(file).resolve().parentFILE_PATH = BASE_DIR / "list" / "HW_LIST.csv"
+BASE_DIR = Path(file).resolve().parent
+FILE_PATH = BASE_DIR / "list" / "HW_LIST.csv"
 
 HEADERS = ["Date", "Level", "Subject", "Homework", "Student"]
 
-def ensure_file_exists():FILE_PATH.parent.mkdir(parents=True, exist_ok=True)if not FILE_PATH.exists():with open(FILE_PATH, "w", newline="", encoding="utf-8") as f:writer = csv.writer(f)writer.writerow(HEADERS)
+def ensure_file_exists():
+    FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if not FILE_PATH.exists():
+    with open(FILE_PATH, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(HEADERS)
 
-def load_records():ensure_file_exists()with open(FILE_PATH, "r", newline="", encoding="utf-8") as f:reader = csv.DictReader(f)return list(reader)
+def load_records():
+    ensure_file_exists()
+    with open(FILE_PATH, "r", newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)return list(reader)
 
-def save_records(records):with open(FILE_PATH, "w", newline="", encoding="utf-8") as f:writer = csv.DictWriter(f, fieldnames=HEADERS)writer.writeheader()writer.writerows(records)
+def save_records(records):
+    with open(FILE_PATH, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=HEADERS)
+        writer.writeheader()
+        writer.writerows(records)
 
-def is_letters_only(text):cleaned = text.replace(" ", "").replace("-", "").replace("'", "")return cleaned.isalpha()
+def is_letters_only(text):
+    cleaned = text.replace(" ", "").replace("-", "").replace("'", "")
+    return cleaned.isalpha()
 
 st.title("Homework Submission Tracker")
 
@@ -23,7 +38,8 @@ records = load_records()
 
 tab1, tab2 = st.tabs(["View Records", "Add / Remove Records"])
 
-with tab1:st.subheader("Find Records")
+with tab1:
+    st.subheader("Find Records")
 
 if records:
     levels = sorted(set(r["Level"] for r in records if r["Level"]))
@@ -91,7 +107,12 @@ if records:
 else:
     st.info("No records found yet.")
 
-with tab2:st.subheader("Add Records")if "success_message" in st.session_state:st.success(st.session_state["success_message"])del st.session_state["success_message"]
+with tab2:
+    st.subheader("Add Records")
+    
+    if "success_message" in st.session_state:
+        st.success(st.session_state["success_message"])
+        del st.session_state["success_message"]
 
 level = st.selectbox(
 "Primary Level",
