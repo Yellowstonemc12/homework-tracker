@@ -66,7 +66,7 @@ with tab1:
         if "show_filters" not in st.session_state:
             st.session_state.show_filters = False
     
-        if st.button("🔎", key="filter_toggle"):
+        if st.button("Filter: 🔎", key="filter_toggle"):
             st.session_state.show_filters = not st.session_state.show_filters
 
     if records:
