@@ -13,9 +13,9 @@ HEADERS = ["Date", "Level", "Subject", "Homework", "Student"]
 def ensure_file_exists():
     FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
     if not FILE_PATH.exists():
-    with open(FILE_PATH, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(HEADERS)
+        with open(FILE_PATH, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(HEADERS)
 
 def load_records():
     ensure_file_exists()
