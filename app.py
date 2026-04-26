@@ -132,7 +132,7 @@ with tab2:
         for i in range(num_students):
             student_names.append(st.text_input(f"Student name #{i + 1}"))
     
-        submitted = st.form_submit_button("Save Records"))
+        submitted = st.form_submit_button("Save Records")
 
         if submitted:
             if not homework.strip():
