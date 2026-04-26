@@ -92,7 +92,7 @@ with tab1:
         sorted_groups = sorted(
             grouped.items(),
             key=lambda x: (
-                int(x[5].split("|")[0].strip().replace("Primary ", "")),  # Level
+                -int(x[5].split("|")[0].strip().replace("Primary ", "")),  # Level
                 x[1][0]["Date"]  # Oldest date first
             )
         )
