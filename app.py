@@ -45,6 +45,7 @@ records = load_records()
 tab1, tab2 = st.tabs(["View Records", "Add / Remove Records"])
 
 with tab1:
+    with tab1:
     col_title, col_btn = st.columns([6, 1])
 
     with col_title:
@@ -67,14 +68,14 @@ with tab1:
         selected_homework = "All"
         student_search = ""
 
-    if st.session_state.show_filters:
-        with st.container(border=True):
-            st.write("🔎 Filters")
-    
-            selected_level = st.selectbox("Filter by Level", ["All"] + levels)
-            selected_subject = st.selectbox("Filter by Subject", ["All"] + subjects)
-            selected_homework = st.selectbox("Filter by Homework", ["All"] + homework_list)
-            student_search = st.text_input("Search student name")
+        if st.session_state.show_filters:
+            with st.container(border=True):
+                st.write("🔎 Filters")
+
+                selected_level = st.selectbox("Filter by Level", ["All"] + levels)
+                selected_subject = st.selectbox("Filter by Subject", ["All"] + subjects)
+                selected_homework = st.selectbox("Filter by Homework", ["All"] + homework_list)
+                student_search = st.text_input("Search student name")
 
         filtered = records
 
