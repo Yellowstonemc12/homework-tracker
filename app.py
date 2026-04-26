@@ -156,7 +156,7 @@ with tab2:
                             skipped.append(student.strip())
                         else:
                             current_records.append({
-                                "Date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                                "Date": datetime.now().strftime("%A, %d %B %Y"),
                                 "Level": level,
                                 "Subject": subject,
                                 "Homework": homework.strip(),
