@@ -109,28 +109,30 @@ with tab1:
 
 with tab2:
     st.subheader("Add Records")
+    if "success_message" in st.session_state:
+        st.success(st.session_state["success_message"])
+        del st.session_state["success_message"]
 
+    level = st.selectbox(
+    "Primary Level",
+    ["Primary 1", "Primary 2", "Primary 3", "Primary 4", "Primary 5", "Primary 6"]
+    )
+    
+    subject = st.selectbox(
+        "Subject",
+        ["English", "Chinese", "Math", "Science", "Higher Chinese", "Others"]
+    )
+    
+    homework = st.text_input("Homework name")
+    num_students = st.number_input("Number of students", min_value=1, step=1)
+    
+    student_names = []
+    
     with st.form("add_form"):
-        level = st.selectbox(
-            "Primary Level",
-            ["Primary 1", "Primary 2", "Primary 3", "Primary 4", "Primary 5", "Primary 6"]
-        )
-
-        subject = st.selectbox(
-            "Subject",
-            ["English", "Chinese", "Math", "Science", "Higher Chinese", "Others"]
-        )
-
-        homework = st.text_input("Homework name")
-        num_students = st.text_input("Number of students")
-
-        student_names = []
-
-        if num_students.isdigit() and int(num_students) > 0:
-            for i in range(int(num_students)):
-                student_names.append(st.text_input(f"Student name #{i + 1}"))
-
-        submitted = st.form_submit_button("Save Records")
+        for i in range(num_students):
+            student_names.append(st.text_input(f"Student name #{i + 1}"))
+    
+        submitted = st.form_submit_button("Save Records"))
 
         if submitted:
             if not homework.strip():
@@ -185,7 +187,7 @@ with tab2:
                     save_records(current_records)
 
                     if added:
-                        st.success(f"{added} record(s) added successfully.")
+                        st.session_state["success_message"] = f"{added} record(s) added successfully."
 
                     if skipped:
                         st.warning(
