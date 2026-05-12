@@ -1,20 +1,17 @@
 from fastapi import FastAPI, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
-from pathlib import Path
+import os
 import csv
 from datetime import datetime
 
 app = FastAPI()
 
-BASE_DIR = Path(__file__).resolve().parent
-FILE_PATH = BASE_DIR / "list" / "HW_LIST.csv"
-
+FILE_PATH = "/tmp/HW_LIST.csv"  # 🔥 IMPORTANT: use /tmp on Vercel
 HEADERS = ["Date", "Level", "Subject", "Homework", "Student"]
 
 
 def ensure_file():
-    FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    if not FILE_PATH.exists():
+    if not os.path.exists(FILE_PATH):
         with open(FILE_PATH, "w", newline="", encoding="utf-8") as f:
             csv.writer(f).writerow(HEADERS)
 
@@ -44,36 +41,25 @@ def home():
     )
 
     return f"""
-    <html>
-    <head>
-        <title>Homework Tracker</title>
-    </head>
-    <body>
-        <h1>📘 Homework Submission Tracker</h1>
+    <h1>📘 Homework Tracker</h1>
 
-        <h2>Add Record</h2>
-        <form action="/add" method="post">
-            Level: <input name="level"><br>
-            Subject: <input name="subject"><br>
-            Homework: <input name="homework"><br>
-            Student: <input name="student"><br>
-            <button type="submit">Add</button>
-        </form>
+    <form action="/add" method="post">
+        Level: <input name="level"><br>
+        Subject: <input name="subject"><br>
+        Homework: <input name="homework"><br>
+        Student: <input name="student"><br>
+        <button>Add</button>
+    </form>
 
-        <h2>Records</h2>
-        <table border="1">
-            <tr>
-                <th>Date</th><th>Level</th><th>Subject</th><th>Homework</th><th>Student</th>
-            </tr>
-            {rows}
-        </table>
-    </body>
-    </html>
+    <table border="1">
+        <tr><th>Date</th><th>Level</th><th>Subject</th><th>Homework</th><th>Student</th></tr>
+        {rows}
+    </table>
     """
 
 
 @app.post("/add")
-def add_record(
+def add(
     level: str = Form(...),
     subject: str = Form(...),
     homework: str = Form(...),
@@ -90,4 +76,5 @@ def add_record(
     })
 
     save_records(records)
+
     return RedirectResponse("/", status_code=303)
