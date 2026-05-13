@@ -4,15 +4,6 @@ import os
 import csv
 from datetime import datetime
 
-{
-  "builds": [
-    { "src": "api/app.py", "use": "@vercel/python" }
-  ],
-  "routes": [
-    { "src": "/(.*)", "dest": "api/app.py" }
-  ]
-}
-
 app = FastAPI()
 
 FILE_PATH = "/tmp/HW_LIST.csv"  # 🔥 IMPORTANT: use /tmp on Vercel
