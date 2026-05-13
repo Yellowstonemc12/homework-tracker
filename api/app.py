@@ -30,9 +30,8 @@ def save_records(records):
         writer.writerows(records)
 
 
+
 @app.get("/", response_class=HTMLResponse)
-def home():
-    @app.get("/", response_class=HTMLResponse)
 def home():
     records = load_records()
 
