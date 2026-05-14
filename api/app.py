@@ -1,34 +1,76 @@
 from fastapi import FastAPI, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
-import os
-import csv
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
+import sqlite3
 from datetime import datetime
 
 app = FastAPI()
 
-FILE_PATH = "/tmp/HW_LIST.csv"  # 🔥 IMPORTANT: use /tmp on Vercel
-HEADERS = ["Date", "Level", "Subject", "Homework", "Student"]
+DB_PATH = "/tmp/homework.db"
 
 
-def ensure_file():
-    if not os.path.exists(FILE_PATH):
-        with open(FILE_PATH, "w", newline="", encoding="utf-8") as f:
-            csv.writer(f).writerow(HEADERS)
+# =========================
+# DATABASE
+# =========================
+
+def get_connection():
+    return sqlite3.connect(DB_PATH)
+
+
+def init_db():
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS homework (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT,
+            level TEXT,
+            subject TEXT,
+            homework TEXT,
+            student TEXT
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+init_db()
 
 
 def load_records():
-    ensure_file()
-    with open(FILE_PATH, "r", encoding="utf-8") as f:
-        return list(csv.DictReader(f))
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT id, date, level, subject, homework, student
+        FROM homework
+        ORDER BY id DESC
+    """)
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    return [
+        {
+            "ID": r[0],
+            "Date": r[1],
+            "Level": r[2],
+            "Subject": r[3],
+            "Homework": r[4],
+            "Student": r[5],
+        }
+        for r in rows
+    ]
 
 
-def save_records(records):
-    ensure_file()
-    with open(FILE_PATH, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=HEADERS)
-        writer.writeheader()
-        writer.writerows(records)
+# =========================
+# ROUTES
+# =========================
 
+@app.get("/favicon.ico")
+def favicon():
+    return Response(status_code=204)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -54,7 +96,10 @@ def home():
     <head>
         <title>Homework Tracker</title>
 
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+
         <style>
+
             * {{
                 margin: 0;
                 padding: 0;
@@ -155,7 +200,22 @@ def home():
                 padding: 30px;
             }}
 
+            .badge {{
+                display: inline-block;
+                background: #2563eb;
+                color: white;
+                padding: 6px 12px;
+                border-radius: 999px;
+                font-size: 14px;
+                margin-bottom: 15px;
+            }}
+
             @media (max-width: 700px) {{
+
+                body {{
+                    padding: 20px;
+                }}
+
                 form {{
                     grid-template-columns: 1fr;
                 }}
@@ -170,40 +230,78 @@ def home():
 
                 table {{
                     font-size: 14px;
+                    display: block;
+                    overflow-x: auto;
                 }}
             }}
+
         </style>
     </head>
 
     <body>
+
         <div class="container">
 
             <div class="title">📘 Homework Tracker</div>
+
             <div class="subtitle">
                 Manage student homework submissions easily
             </div>
 
             <div class="card">
+
+                <div class="badge">
+                    Total Records: {len(records)}
+                </div>
+
                 <h2>Add Record</h2>
 
                 <form action="/add" method="post">
-                    <input name="level" placeholder="Primary Level" required>
-                    <input name="subject" placeholder="Subject" required>
-                    <input name="homework" placeholder="Homework Name" required>
-                    <input name="student" placeholder="Student Name" required>
+
+                    <input
+                        type="text"
+                        name="level"
+                        placeholder="Primary Level"
+                        required
+                    >
+
+                    <input
+                        type="text"
+                        name="subject"
+                        placeholder="Subject"
+                        required
+                    >
+
+                    <input
+                        type="text"
+                        name="homework"
+                        placeholder="Homework Name"
+                        required
+                    >
+
+                    <input
+                        type="text"
+                        name="student"
+                        placeholder="Student Name"
+                        required
+                    >
 
                     <button type="submit">
                         Add Record
                     </button>
+
                 </form>
+
             </div>
 
             <div class="card">
-                <h2>📋 Records ({len(records)})</h2>
+
+                <h2>📋 Records</h2>
 
                 {
                     f'''
                     <table>
+
                         <tr>
                             <th>Date</th>
                             <th>Level</th>
@@ -213,14 +311,18 @@ def home():
                         </tr>
 
                         {rows}
+
                     </table>
                     '''
-                    if records else
+                    if records
+                    else
                     '<div class="empty">No records yet 🌱</div>'
                 }
+
             </div>
 
         </div>
+
     </body>
     </html>
     """
@@ -233,16 +335,48 @@ def add(
     homework: str = Form(...),
     student: str = Form(...)
 ):
-    records = load_records()
 
-    records.append({
-        "Date": datetime.now().strftime("%Y-%m-%d"),
-        "Level": level,
-        "Subject": subject,
-        "Homework": homework,
-        "Student": student
-    })
+    conn = get_connection()
+    cursor = conn.cursor()
 
-    save_records(records)
+    # Prevent duplicates
+    cursor.execute("""
+        SELECT * FROM homework
+        WHERE
+            level = ?
+            AND subject = ?
+            AND homework = ?
+            AND student = ?
+    """, (
+        level.strip(),
+        subject.strip(),
+        homework.strip(),
+        student.strip()
+    ))
+
+    existing = cursor.fetchone()
+
+    if not existing:
+
+        cursor.execute("""
+            INSERT INTO homework (
+                date,
+                level,
+                subject,
+                homework,
+                student
+            )
+            VALUES (?, ?, ?, ?, ?)
+        """, (
+            datetime.now().strftime("%Y-%m-%d"),
+            level.strip(),
+            subject.strip(),
+            homework.strip(),
+            student.strip()
+        ))
+
+        conn.commit()
+
+    conn.close()
 
     return RedirectResponse("/", status_code=303)
