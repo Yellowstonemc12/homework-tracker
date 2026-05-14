@@ -27,7 +27,8 @@ def init_db():
             level TEXT,
             subject TEXT,
             homework TEXT,
-            student TEXT
+            student TEXT,
+            priority INTEGER DEFAULT 0
         )
     """)
 
@@ -43,9 +44,9 @@ def load_records():
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT id, date, level, subject, homework, student
+        SELECT id, date, level, subject, homework, student, priority
         FROM homework
-        ORDER BY id DESC
+        ORDER BY priority DESC, id DESC
     """)
 
     rows = cursor.fetchall()
@@ -59,6 +60,7 @@ def load_records():
             "Subject": r[3],
             "Homework": r[4],
             "Student": r[5],
+            "Priority": r[6],
         }
         for r in rows
     ]
@@ -76,10 +78,19 @@ def favicon():
 @app.get("/", response_class=HTMLResponse)
 def home():
 
-   @app.get("/", response_class=HTMLResponse)
-def home():
-
     records = load_records()
+
+    priority_rows = "".join(
+        f"""
+        <tr>
+            <td>{r['Student']}</td>
+            <td>{r['Homework']}</td>
+            <td>{r['Subject']}</td>
+            <td><span class='priority-badge'>⭐ PRIORITY</span></td>
+        </tr>
+        """
+        for r in records if r["Priority"] == 1
+    )
 
     rows = "".join(
         f"""
@@ -88,7 +99,14 @@ def home():
             <td>{r['Level']}</td>
             <td>{r['Subject']}</td>
             <td>{r['Homework']}</td>
-            <td>{r['Student']}</td>
+
+            <td>
+                {r['Student']}
+                {
+                    "<span class='priority-badge'>⭐</span>"
+                    if r['Priority'] == 1 else ""
+                }
+            </td>
 
             <td>
                 <form action="/delete/{r['ID']}" method="post">
@@ -238,6 +256,25 @@ def home():
                 margin-bottom: 15px;
             }}
 
+            .priority-label {{
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                font-weight: bold;
+                color: #d97706;
+            }}
+
+            .priority-badge {{
+                display: inline-block;
+                background: #facc15;
+                color: #222;
+                padding: 4px 10px;
+                border-radius: 999px;
+                font-size: 12px;
+                font-weight: bold;
+                margin-left: 8px;
+            }}
+
             @media (max-width: 700px) {{
 
                 body {{
@@ -279,6 +316,32 @@ def home():
 
             <div class="card">
 
+                <h2>⭐ Priority Students</h2>
+
+                {
+                    f'''
+                    <table>
+
+                        <tr>
+                            <th>Student</th>
+                            <th>Homework</th>
+                            <th>Subject</th>
+                            <th>Status</th>
+                        </tr>
+
+                        {priority_rows}
+
+                    </table>
+                    '''
+                    if priority_rows
+                    else
+                    '<div class="empty">No priority students 🎉</div>'
+                }
+
+            </div>
+
+            <div class="card">
+
                 <div class="badge">
                     Total Records: {len(records)}
                 </div>
@@ -314,6 +377,11 @@ def home():
                         placeholder="Student Name"
                         required
                     >
+
+                    <label class="priority-label">
+                        <input type="checkbox" name="priority">
+                        ⭐ Priority Student
+                    </label>
 
                     <button type="submit">
                         Add Record
@@ -358,18 +426,21 @@ def home():
     </html>
     """
 
+
 @app.post("/add")
 def add(
     level: str = Form(...),
     subject: str = Form(...),
     homework: str = Form(...),
-    student: str = Form(...)
+    student: str = Form(...),
+    priority: str = Form(None)
 ):
 
     conn = get_connection()
     cursor = conn.cursor()
 
-    # Prevent duplicates
+    is_priority = 1 if priority else 0
+
     cursor.execute("""
         SELECT * FROM homework
         WHERE
@@ -394,15 +465,17 @@ def add(
                 level,
                 subject,
                 homework,
-                student
+                student,
+                priority
             )
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?)
         """, (
             datetime.now().strftime("%Y-%m-%d"),
             level.strip(),
             subject.strip(),
             homework.strip(),
-            student.strip()
+            student.strip(),
+            is_priority
         ))
 
         conn.commit()
@@ -427,3 +500,4 @@ def delete_record(record_id: int):
     conn.close()
 
     return RedirectResponse("/", status_code=303)
+    
