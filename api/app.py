@@ -76,6 +76,9 @@ def favicon():
 @app.get("/", response_class=HTMLResponse)
 def home():
 
+   @app.get("/", response_class=HTMLResponse)
+def home():
+
     records = load_records()
 
     rows = "".join(
@@ -152,7 +155,7 @@ def home():
                 margin-bottom: 20px;
             }}
 
-            form {{
+            .add-form {{
                 display: grid;
                 grid-template-columns: 1fr 1fr;
                 gap: 15px;
@@ -187,6 +190,9 @@ def home():
                 padding: 8px 12px;
                 border-radius: 8px;
                 font-size: 14px;
+                border: none;
+                color: white;
+                cursor: pointer;
             }}
 
             .delete-btn:hover {{
@@ -238,7 +244,7 @@ def home():
                     padding: 20px;
                 }}
 
-                form {{
+                .add-form {{
                     grid-template-columns: 1fr;
                 }}
 
@@ -279,7 +285,7 @@ def home():
 
                 <h2>Add Record</h2>
 
-                <form action="/add" method="post">
+                <form class="add-form" action="/add" method="post">
 
                     <input
                         type="text"
@@ -351,7 +357,6 @@ def home():
 
     </html>
     """
-
 
 @app.post("/add")
 def add(
