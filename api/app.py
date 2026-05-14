@@ -75,6 +75,7 @@ def favicon():
 
 @app.get("/", response_class=HTMLResponse)
 def home():
+
     records = load_records()
 
     rows = "".join(
@@ -85,6 +86,14 @@ def home():
             <td>{r['Subject']}</td>
             <td>{r['Homework']}</td>
             <td>{r['Student']}</td>
+
+            <td>
+                <form action="/delete/{r['ID']}" method="post">
+                    <button class="delete-btn" type="submit">
+                        🗑 Delete
+                    </button>
+                </form>
+            </td>
         </tr>
         """
         for r in records
@@ -93,7 +102,9 @@ def home():
     return f"""
     <!DOCTYPE html>
     <html>
+
     <head>
+
         <title>Homework Tracker</title>
 
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -171,6 +182,17 @@ def home():
                 background: #1d4ed8;
             }}
 
+            .delete-btn {{
+                background: #dc2626;
+                padding: 8px 12px;
+                border-radius: 8px;
+                font-size: 14px;
+            }}
+
+            .delete-btn:hover {{
+                background: #b91c1c;
+            }}
+
             table {{
                 width: 100%;
                 border-collapse: collapse;
@@ -236,6 +258,7 @@ def home():
             }}
 
         </style>
+
     </head>
 
     <body>
@@ -308,6 +331,7 @@ def home():
                             <th>Subject</th>
                             <th>Homework</th>
                             <th>Student</th>
+                            <th>Action</th>
                         </tr>
 
                         {rows}
@@ -324,6 +348,7 @@ def home():
         </div>
 
     </body>
+
     </html>
     """
 
@@ -377,6 +402,23 @@ def add(
 
         conn.commit()
 
+    conn.close()
+
+    return RedirectResponse("/", status_code=303)
+
+
+@app.post("/delete/{record_id}")
+def delete_record(record_id: int):
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "DELETE FROM homework WHERE id = ?",
+        (record_id,)
+    )
+
+    conn.commit()
     conn.close()
 
     return RedirectResponse("/", status_code=303)
