@@ -28,9 +28,25 @@ def init_db():
             subject TEXT,
             homework TEXT,
             student TEXT,
-            priority INTEGER DEFAULT 0
+            priority INTEGER DEFAULT 0,
+            missed_count INTEGER DEFAULT 1
         )
     """)
+
+    # Add new columns if old DB exists
+    try:
+        cursor.execute(
+            "ALTER TABLE homework ADD COLUMN priority INTEGER DEFAULT 0"
+        )
+    except:
+        pass
+
+    try:
+        cursor.execute(
+            "ALTER TABLE homework ADD COLUMN missed_count INTEGER DEFAULT 1"
+        )
+    except:
+        pass
 
     conn.commit()
     conn.close()
@@ -44,9 +60,17 @@ def load_records():
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT id, date, level, subject, homework, student, priority
+        SELECT
+            id,
+            date,
+            level,
+            subject,
+            homework,
+            student,
+            priority,
+            missed_count
         FROM homework
-        ORDER BY priority DESC, id DESC
+        ORDER BY priority DESC, missed_count DESC, id DESC
     """)
 
     rows = cursor.fetchall()
@@ -61,6 +85,7 @@ def load_records():
             "Homework": r[4],
             "Student": r[5],
             "Priority": r[6],
+            "Missed": r[7],
         }
         for r in rows
     ]
@@ -86,6 +111,7 @@ def home():
             <td>{r['Student']}</td>
             <td>{r['Homework']}</td>
             <td>{r['Subject']}</td>
+            <td>{r['Missed']}</td>
             <td><span class='priority-badge'>⭐ PRIORITY</span></td>
         </tr>
         """
@@ -101,20 +127,59 @@ def home():
             <td>{r['Homework']}</td>
 
             <td>
-                {r['Student']}
-                {
-                    "<span class='priority-badge'>⭐</span>"
-                    if r['Priority'] == 1 else ""
-                }
+
+                <div class="student-cell">
+
+                    <div class="student-top">
+
+                        <span>
+                            {r['Student']}
+                        </span>
+
+                        {
+                            "<span class='priority-badge'>⭐</span>"
+                            if r['Priority'] == 1 else ""
+                        }
+
+                    </div>
+
+                    <div class="missed-counter">
+                        Missed Homework:
+                        <span class="missed-number">
+                            {r['Missed']}
+                        </span>
+                    </div>
+
+                </div>
+
             </td>
 
             <td>
-                <form action="/delete/{r['ID']}" method="post">
-                    <button class="delete-btn" type="submit">
-                        🗑 Delete
-                    </button>
-                </form>
+
+                <div class="action-buttons">
+
+                    <form action="/increase/{r['ID']}" method="post">
+                        <button class="counter-btn" type="submit">
+                            ➕ Missed
+                        </button>
+                    </form>
+
+                    <form action="/decrease/{r['ID']}" method="post">
+                        <button class="counter-btn decrease-btn" type="submit">
+                            ➖ Undo
+                        </button>
+                    </form>
+
+                    <form action="/delete/{r['ID']}" method="post">
+                        <button class="delete-btn" type="submit">
+                            🗑 Delete
+                        </button>
+                    </form>
+
+                </div>
+
             </td>
+
         </tr>
         """
         for r in records
@@ -217,6 +282,34 @@ def home():
                 background: #b91c1c;
             }}
 
+            .counter-btn {{
+                background: #059669;
+                padding: 8px 12px;
+                border-radius: 8px;
+                border: none;
+                color: white;
+                cursor: pointer;
+                font-size: 13px;
+            }}
+
+            .counter-btn:hover {{
+                background: #047857;
+            }}
+
+            .decrease-btn {{
+                background: #d97706;
+            }}
+
+            .decrease-btn:hover {{
+                background: #b45309;
+            }}
+
+            .action-buttons {{
+                display: flex;
+                gap: 8px;
+                flex-wrap: wrap;
+            }}
+
             table {{
                 width: 100%;
                 border-collapse: collapse;
@@ -272,7 +365,33 @@ def home():
                 border-radius: 999px;
                 font-size: 12px;
                 font-weight: bold;
-                margin-left: 8px;
+            }}
+
+            .student-cell {{
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }}
+
+            .student-top {{
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                flex-wrap: wrap;
+            }}
+
+            .missed-counter {{
+                font-size: 13px;
+                color: #666;
+            }}
+
+            .missed-number {{
+                background: #dc2626;
+                color: white;
+                padding: 2px 10px;
+                border-radius: 999px;
+                font-weight: bold;
+                margin-left: 6px;
             }}
 
             @media (max-width: 700px) {{
@@ -326,6 +445,7 @@ def home():
                             <th>Student</th>
                             <th>Homework</th>
                             <th>Subject</th>
+                            <th>Missed</th>
                             <th>Status</th>
                         </tr>
 
@@ -405,7 +525,7 @@ def home():
                             <th>Subject</th>
                             <th>Homework</th>
                             <th>Student</th>
-                            <th>Action</th>
+                            <th>Actions</th>
                         </tr>
 
                         {rows}
@@ -466,20 +586,63 @@ def add(
                 subject,
                 homework,
                 student,
-                priority
+                priority,
+                missed_count
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
             datetime.now().strftime("%Y-%m-%d"),
             level.strip(),
             subject.strip(),
             homework.strip(),
             student.strip(),
-            is_priority
+            is_priority,
+            1
         ))
 
         conn.commit()
 
+    conn.close()
+
+    return RedirectResponse("/", status_code=303)
+
+
+@app.post("/increase/{record_id}")
+def increase_missed(record_id: int):
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        UPDATE homework
+        SET missed_count = missed_count + 1
+        WHERE id = ?
+    """, (record_id,))
+
+    conn.commit()
+    conn.close()
+
+    return RedirectResponse("/", status_code=303)
+
+
+@app.post("/decrease/{record_id}")
+def decrease_missed(record_id: int):
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        UPDATE homework
+        SET missed_count =
+            CASE
+                WHEN missed_count > 0
+                THEN missed_count - 1
+                ELSE 0
+            END
+        WHERE id = ?
+    """, (record_id,))
+
+    conn.commit()
     conn.close()
 
     return RedirectResponse("/", status_code=303)
@@ -500,4 +663,3 @@ def delete_record(record_id: int):
     conn.close()
 
     return RedirectResponse("/", status_code=303)
-    
