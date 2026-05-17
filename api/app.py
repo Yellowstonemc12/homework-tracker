@@ -2,9 +2,6 @@ from fastapi import FastAPI, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 import sqlite3
 from datetime import datetime
-import csv
-from fastapi.responses import StreamingResponse
-from io import StringIO
 
 app = FastAPI()
 
@@ -43,6 +40,10 @@ def init_db():
 init_db()
 
 
+# =========================
+# LOAD RECORDS
+# =========================
+
 def load_records():
 
     conn = get_connection()
@@ -72,6 +73,10 @@ def load_records():
     ]
 
 
+# =========================
+# STUDENT MISSING COUNT
+# =========================
+
 def get_student_count(student_name):
 
     conn = get_connection()
@@ -91,6 +96,28 @@ def get_student_count(student_name):
 
 
 # =========================
+# TOP MISSING STUDENT
+# =========================
+
+def get_top_student(records):
+
+    if not records:
+        return ("None", 0)
+
+    student_counts = {}
+
+    for r in records:
+
+        name = r["Student"]
+
+        student_counts[name] = student_counts.get(name, 0) + 1
+
+    top_student = max(student_counts, key=student_counts.get)
+
+    return (top_student, student_counts[top_student])
+
+
+# =========================
 # ROUTES
 # =========================
 
@@ -100,71 +127,19 @@ def favicon():
 
 
 @app.get("/", response_class=HTMLResponse)
-def home(search: str = ""):
+def home():
 
     records = load_records()
 
-    if search:
-        records = [
-            r for r in records
-            if search.lower() in r["Student"].lower()
-        ]
+    total_records = len(records)
 
-    # =========================
-    # LEADERBOARD
-    # =========================
+    unique_students = len(set(r["Student"] for r in records))
 
-    student_totals = {}
-
-    for r in load_records():
-
-        student = r["Student"]
-
-        if student not in student_totals:
-            student_totals[student] = 0
-
-        student_totals[student] += 1
-
-    sorted_students = sorted(
-        student_totals.items(),
-        key=lambda x: x[1],
-        reverse=True
+    priority_students = len(
+        [r for r in records if r["Priority"] == 1]
     )
 
-    leaderboard_rows = "".join(
-        f"""
-        <tr>
-            <td>🏆 {name}</td>
-            <td>{count}</td>
-        </tr>
-        """
-        for name, count in sorted_students[:5]
-    )
-
-    # =========================
-    # STATISTICS
-    # =========================
-
-    total_records = len(load_records())
-
-    total_priority = len([
-        r for r in load_records()
-        if r["Priority"] == 1
-    ])
-
-    total_students = len(set(
-        r["Student"] for r in load_records()
-    ))
-
-    top_student = (
-        sorted_students[0][0]
-        if sorted_students else "None"
-    )
-
-    top_missing = (
-        sorted_students[0][1]
-        if sorted_students else 0
-    )
+    top_student, top_missing = get_top_student(records)
 
     # =========================
     # PRIORITY TABLE
@@ -176,6 +151,7 @@ def home(search: str = ""):
             <td>{r['Student']}</td>
             <td>{r['Homework']}</td>
             <td>{r['Subject']}</td>
+
             <td>
                 <span class='priority-badge'>
                     ⭐ PRIORITY
@@ -188,7 +164,7 @@ def home(search: str = ""):
     )
 
     # =========================
-    # MAIN TABLE
+    # RECORDS TABLE
     # =========================
 
     rows = "".join(
@@ -268,7 +244,7 @@ def home(search: str = ""):
             }}
 
             .title {{
-                font-size: 42px;
+                font-size: 52px;
                 font-weight: bold;
                 margin-bottom: 10px;
             }}
@@ -276,14 +252,7 @@ def home(search: str = ""):
             .subtitle {{
                 color: #666;
                 margin-bottom: 35px;
-            }}
-
-            .card {{
-                background: white;
-                padding: 25px;
-                border-radius: 18px;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-                margin-bottom: 30px;
+                font-size: 18px;
             }}
 
             .stats-grid {{
@@ -296,15 +265,35 @@ def home(search: str = ""):
             .stat-card {{
                 background: white;
                 padding: 25px;
-                border-radius: 18px;
+                border-radius: 22px;
                 box-shadow: 0 4px 12px rgba(0,0,0,0.08);
             }}
 
+            .stat-title {{
+                font-size: 16px;
+                color: #555;
+                margin-bottom: 15px;
+            }}
+
             .stat-number {{
-                font-size: 36px;
+                font-size: 42px;
                 font-weight: bold;
                 color: #2563eb;
-                margin-top: 10px;
+            }}
+
+            .leaderboard-name {{
+                font-size: 18px;
+                font-weight: bold;
+                color: #2563eb;
+                margin-bottom: 8px;
+            }}
+
+            .card {{
+                background: white;
+                padding: 25px;
+                border-radius: 18px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+                margin-bottom: 30px;
             }}
 
             .card h2 {{
@@ -353,15 +342,6 @@ def home(search: str = ""):
 
             .delete-btn:hover {{
                 background: #b91c1c;
-            }}
-
-            .export-btn {{
-                background: #059669;
-                margin-top: 15px;
-            }}
-
-            .export-btn:hover {{
-                background: #047857;
             }}
 
             table {{
@@ -423,12 +403,50 @@ def home(search: str = ""):
                 margin-left: 8px;
             }}
 
-            .search-bar {{
+            .records-header {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
                 margin-bottom: 20px;
+                gap: 20px;
             }}
 
-            .leaderboard-card {{
-                border-left: 6px solid #f59e0b;
+            #searchInput {{
+                width: 300px;
+            }}
+
+            @media (max-width: 700px) {{
+
+                body {{
+                    padding: 20px;
+                }}
+
+                .add-form {{
+                    grid-template-columns: 1fr;
+                }}
+
+                button {{
+                    grid-column: span 1;
+                }}
+
+                .title {{
+                    font-size: 36px;
+                }}
+
+                .records-header {{
+                    flex-direction: column;
+                    align-items: stretch;
+                }}
+
+                #searchInput {{
+                    width: 100%;
+                }}
+
+                table {{
+                    font-size: 14px;
+                    display: block;
+                    overflow-x: auto;
+                }}
             }}
 
         </style>
@@ -447,44 +465,197 @@ def home(search: str = ""):
                 Manage student homework submissions easily
             </div>
 
-            <!-- STATISTICS -->
+            <!-- STATS -->
 
             <div class="stats-grid">
 
                 <div class="stat-card">
-                    📚 Total Records
-                    <div class="stat-number">
-                        {total_records}
-                    </div>
+                    <div class="stat-title">📚 Total Records</div>
+                    <div class="stat-number">{total_records}</div>
                 </div>
 
                 <div class="stat-card">
-                    👥 Unique Students
-                    <div class="stat-number">
-                        {total_students}
-                    </div>
+                    <div class="stat-title">👥 Unique Students</div>
+                    <div class="stat-number">{unique_students}</div>
                 </div>
 
                 <div class="stat-card">
-                    ⭐ Priority Students
-                    <div class="stat-number">
-                        {total_priority}
-                    </div>
+                    <div class="stat-title">⭐ Priority Students</div>
+                    <div class="stat-number">{priority_students}</div>
                 </div>
 
                 <div class="stat-card">
-                    🏆 Top Missing Student
-                    <div class="stat-number" style="font-size:22px;">
+                    <div class="stat-title">🏆 Top Missing Student</div>
+
+                    <div class="leaderboard-name">
                         {top_student}
                     </div>
 
-                    <div style="margin-top:10px;">
+                    <div>
                         Missing: {top_missing}
                     </div>
                 </div>
 
             </div>
-            """
+
+            <!-- ADD RECORD -->
+
+            <div class="card">
+
+                <h2>➕ Add Record</h2>
+
+                <form class="add-form" action="/add" method="post">
+
+                    <input
+                        type="text"
+                        name="level"
+                        placeholder="Primary Level"
+                        required
+                    >
+
+                    <input
+                        type="text"
+                        name="subject"
+                        placeholder="Subject"
+                        required
+                    >
+
+                    <input
+                        type="text"
+                        name="homework"
+                        placeholder="Homework Name"
+                        required
+                    >
+
+                    <input
+                        type="text"
+                        name="student"
+                        placeholder="Student Name"
+                        required
+                    >
+
+                    <label class="priority-label">
+
+                        <input type="checkbox" name="priority">
+
+                        ⭐ Priority Student
+
+                    </label>
+
+                    <button type="submit">
+                        Add Record
+                    </button>
+
+                </form>
+
+            </div>
+
+            <!-- PRIORITY STUDENTS -->
+
+            <div class="card">
+
+                <h2>⭐ Priority Students</h2>
+
+                {
+                    f'''
+                    <table>
+
+                        <tr>
+                            <th>Student</th>
+                            <th>Homework</th>
+                            <th>Subject</th>
+                            <th>Status</th>
+                        </tr>
+
+                        {priority_rows}
+
+                    </table>
+                    '''
+                    if priority_rows
+                    else
+                    '<div class="empty">No priority students 🎉</div>'
+                }
+
+            </div>
+
+            <!-- RECORDS -->
+
+            <div class="card">
+
+                <div class="records-header">
+
+                    <h2>📋 Records</h2>
+
+                    <input
+                        type="text"
+                        id="searchInput"
+                        placeholder="🔍 Search student..."
+                        onkeyup="searchTable()"
+                    >
+
+                </div>
+
+                {
+                    f'''
+                    <table id="recordsTable">
+
+                        <tr>
+                            <th>Date</th>
+                            <th>Level</th>
+                            <th>Subject</th>
+                            <th>Homework</th>
+                            <th>Student</th>
+                            <th>Action</th>
+                        </tr>
+
+                        {rows}
+
+                    </table>
+                    '''
+                    if records
+                    else
+                    '<div class="empty">No records yet 🌱</div>'
+                }
+
+            </div>
+
+        </div>
+
+        <script>
+
+        function searchTable() {{
+
+            let input = document.getElementById("searchInput");
+
+            let filter = input.value.toLowerCase();
+
+            let table = document.getElementById("recordsTable");
+
+            let tr = table.getElementsByTagName("tr");
+
+            for (let i = 1; i < tr.length; i++) {{
+
+                let td = tr[i].getElementsByTagName("td")[4];
+
+                if (td) {{
+
+                    let textValue =
+                        td.textContent || td.innerText;
+
+                    tr[i].style.display =
+                        textValue.toLowerCase().includes(filter)
+                        ? ""
+                        : "none";
+                }}
+            }}
+        }}
+
+        </script>
+
+    </body>
+
+    </html>
+    """
 
 
 # =========================
@@ -508,94 +679,28 @@ def add(
     is_priority = 1 if priority else 0
 
     cursor.execute("""
-        SELECT *
-        FROM homework
-        WHERE
-            level = ?
-            AND subject = ?
-            AND homework = ?
-            AND student = ?
+        INSERT INTO homework (
+            date,
+            level,
+            subject,
+            homework,
+            student,
+            priority
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
     """, (
+        datetime.now().strftime("%Y-%m-%d"),
         level.strip(),
         subject.strip(),
         homework.strip(),
-        student.strip()
+        student.strip(),
+        is_priority
     ))
 
-    existing = cursor.fetchone()
-
-    if not existing:
-
-        cursor.execute("""
-            INSERT INTO homework (
-                date,
-                level,
-                subject,
-                homework,
-                student,
-                priority
-            )
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            datetime.now().strftime("%Y-%m-%d"),
-            level.strip(),
-            subject.strip(),
-            homework.strip(),
-            student.strip(),
-            is_priority
-        ))
-
-        conn.commit()
-
+    conn.commit()
     conn.close()
 
     return RedirectResponse("/", status_code=303)
-
-
-# =========================
-# EXPORT CSV
-# =========================
-
-@app.get("/export")
-def export_csv():
-
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT date, level, subject, homework, student, priority
-        FROM homework
-    """)
-
-    rows = cursor.fetchall()
-
-    conn.close()
-
-    output = StringIO()
-    writer = csv.writer(output)
-
-    writer.writerow([
-        "Date",
-        "Level",
-        "Subject",
-        "Homework",
-        "Student",
-        "Priority"
-    ])
-
-    for row in rows:
-        writer.writerow(row)
-
-    output.seek(0)
-
-    return StreamingResponse(
-        iter([output.getvalue()]),
-        media_type="text/csv",
-        headers={
-            "Content-Disposition":
-            "attachment; filename=homework.csv"
-        }
-    )
 
 
 # =========================
