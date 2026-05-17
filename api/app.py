@@ -2,6 +2,9 @@ from fastapi import FastAPI, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 import sqlite3
 from datetime import datetime
+import csv
+from fastapi.responses import StreamingResponse
+from io import StringIO
 
 app = FastAPI()
 DB_PATH = "/tmp/homework.db"
@@ -32,7 +35,7 @@ def init_db():
 init_db()
 
 # =========================
-# LOAD RECORDS
+# LOAD DATA
 # =========================
 def load_records():
     conn = get_connection()
@@ -58,17 +61,10 @@ def load_records():
         for r in rows
     ]
 
-# =========================
-# COUNTS
-# =========================
-def get_all_student_counts():
+def get_counts():
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT student, COUNT(*)
-        FROM homework
-        GROUP BY student
-    """)
+    cursor.execute("SELECT student, COUNT(*) FROM homework GROUP BY student")
     data = dict(cursor.fetchall())
     conn.close()
     return data
@@ -89,277 +85,211 @@ def favicon():
 @app.get("/", response_class=HTMLResponse)
 def home():
     records = load_records()
-    counts = get_all_student_counts()
+    counts = get_counts()
 
     total = len(records)
     unique = len(counts)
-    priority_count = len([r for r in records if r["Priority"] == 1])
+    priority_count = len([r for r in records if r["Priority"]])
     top_student, top_missing = get_top_student(counts)
 
-    # PRIORITY TABLE
-    priority_rows = "".join(
-        f"""
-        <tr>
-            <td>{r['Student']}</td>
-            <td>{r['Homework']}</td>
-            <td>{r['Subject']}</td>
-            <td><span class='priority-badge'>⭐ PRIORITY</span></td>
-        </tr>
-        """
-        for r in records if r["Priority"] == 1
-    )
-
-    # RECORDS
-    rows = "".join(
-        f"""
-        <tr>
-            <td>{r['Date']}</td>
-            <td>{r['Level']}</td>
-            <td>{r['Subject']}</td>
-            <td>{r['Homework']}</td>
-            <td>
-                {r['Student']}
-                {"<span class='priority-badge'>⭐</span>" if r['Priority'] else ""}
-                <span class='counter-badge'>
-                    Missing: {counts.get(r['Student'], 0)}
-                </span>
-            </td>
-            <td>
-                <form action="/delete/{r['ID']}" method="post">
-                    <button class="delete-btn">🗑</button>
-                </form>
-            </td>
-        </tr>
-        """
-        for r in records
-    )
+    # rows
+    rows = "".join(f"""
+    <tr>
+        <td>{r['Date']}</td>
+        <td>{r['Level']}</td>
+        <td>{r['Subject']}</td>
+        <td>{r['Homework']}</td>
+        <td>
+            {r['Student']}
+            {"🌟" if r['Priority'] else ""}
+            <span class="badge">{counts.get(r['Student'],0)}</span>
+        </td>
+        <td>
+            <form action="/delete/{r['ID']}" method="post">
+                <button class="delete">❌</button>
+            </form>
+        </td>
+    </tr>
+    """ for r in records)
 
     return f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Homework Tracker</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Homework Tracker</title>
 
-        * {{
-            box-sizing: border-box;
-        }}
+<style>
+:root {{
+    --bg: #f4f7fb;
+    --card: white;
+    --text: #222;
+}}
 
-        body {{
-            font-family: Arial, sans-serif;
-            background: #f4f7fb;
-            padding: 40px;
-            margin: 0;
-        }}
+.dark {{
+    --bg: #0f172a;
+    --card: #1e293b;
+    --text: #e2e8f0;
+}}
 
-        .container {{
-            max-width: 1100px;
-            margin: auto;
-        }}
+body {{
+    font-family: 'Segoe UI';
+    background: var(--bg);
+    color: var(--text);
+    padding: 30px;
+    transition: 0.3s;
+}}
 
-        .title {{
-            font-size: 50px;
-            font-weight: bold;
-        }}
+.container {{
+    max-width: 1100px;
+    margin: auto;
+}}
 
-        .subtitle {{
-            color: #666;
-            margin-bottom: 30px;
-        }}
+.title {{
+    font-size: 48px;
+    font-weight: bold;
+}}
 
-        /* STATS */
-        .stats {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }}
+.card {{
+    background: var(--card);
+    padding: 20px;
+    border-radius: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+    transition: 0.3s;
+}}
 
-        .stat-card {{
-            background: white;
-            padding: 25px;
-            border-radius: 20px;
-            box-shadow: 0 6px 16px rgba(0,0,0,0.08);
-        }}
+.card:hover {{
+    transform: translateY(-3px);
+}}
 
-        .stat-title {{
-            color: #666;
-            margin-bottom: 10px;
-        }}
+.grid {{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px,1fr));
+    gap: 20px;
+}}
 
-        .stat-number {{
-            font-size: 36px;
-            font-weight: bold;
-            color: #2563eb;
-        }}
+.big {{
+    font-size: 32px;
+    color: #60a5fa;
+}}
 
-        /* CARDS */
-        .card {{
-            background: white;
-            padding: 25px;
-            border-radius: 20px;
-            box-shadow: 0 6px 16px rgba(0,0,0,0.08);
-            margin-bottom: 25px;
-        }}
+input {{
+    padding: 10px;
+    border-radius: 10px;
+    border: none;
+    margin: 5px;
+}}
 
-        /* FORM */
-        .add-form {{
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-        }}
+button {{
+    padding: 10px 16px;
+    border-radius: 12px;
+    border: none;
+    background: #6366f1;
+    color: white;
+    cursor: pointer;
+}}
 
-        .add-form input {{
-            padding: 12px;
-            border-radius: 10px;
-            border: 1px solid #ddd;
-        }}
+.delete {{
+    background: #ef4444;
+}}
 
-        .add-form button {{
-            grid-column: span 2;
-            padding: 12px;
-            background: #2563eb;
-            color: white;
-            border: none;
-            border-radius: 12px;
-            cursor: pointer;
-        }}
+.badge {{
+    background: #fb7185;
+    color: white;
+    padding: 3px 8px;
+    border-radius: 10px;
+    margin-left: 6px;
+}}
 
-        /* TABLE */
-        table {{
-            width: 100%;
-            border-collapse: collapse;
-        }}
+table {{
+    width: 100%;
+    border-collapse: collapse;
+}}
 
-        th {{
-            background: #2563eb;
-            color: white;
-            padding: 12px;
-        }}
+td, th {{
+    padding: 10px;
+}}
 
-        td {{
-            padding: 12px;
-            border-bottom: 1px solid #eee;
-        }}
+tr {{
+    transition: 0.2s;
+}}
 
-        tr:hover {{
-            background: #f9fbff;
-        }}
+tr:hover {{
+    background: rgba(0,0,0,0.05);
+}}
 
-        /* BADGES */
-        .priority-badge {{
-            background: #facc15;
-            padding: 4px 10px;
-            border-radius: 999px;
-            margin-left: 6px;
-            font-weight: bold;
-        }}
+.toggle {{
+    float: right;
+    cursor: pointer;
+}}
+</style>
+</head>
 
-        .counter-badge {{
-            background: #ef4444;
-            color: white;
-            padding: 4px 10px;
-            border-radius: 999px;
-            margin-left: 6px;
-        }}
+<body>
+<div class="container">
 
-        /* BUTTON */
-        .delete-btn {{
-            background: #dc2626;
-            color: white;
-            border: none;
-            padding: 6px 10px;
-            border-radius: 8px;
-            cursor: pointer;
-        }}
+<div class="title">
+🧸 Homework Tracker
+<span class="toggle" onclick="toggleDark()">🌙</span>
+</div>
 
-        /* SEARCH */
-        .search {{
-            width: 100%;
-            padding: 10px;
-            margin-bottom: 10px;
-            border-radius: 10px;
-            border: 1px solid #ddd;
-        }}
+<!-- STATS -->
+<div class="grid">
+<div class="card">📚<div class="big">{total}</div></div>
+<div class="card">👩‍🎓<div class="big">{unique}</div></div>
+<div class="card">⭐<div class="big">{priority_count}</div></div>
+<div class="card">🏆 {top_student}<br>{top_missing}</div>
+</div>
 
-        </style>
-    </head>
+<!-- ADD -->
+<div class="card">
+<form action="/add" method="post">
+<input name="level" placeholder="Level" required>
+<input name="subject" placeholder="Subject" required>
+<input name="homework" placeholder="Homework" required>
+<input name="student" placeholder="Student" required>
+<label><input type="checkbox" name="priority"> ⭐</label>
+<button>Add ✨</button>
+</form>
+</div>
 
-    <body>
-    <div class="container">
+<!-- EXPORT -->
+<div class="card">
+<a href="/export"><button>📥 Export CSV</button></a>
+</div>
 
-        <div class="title">📘 Homework Tracker</div>
-        <div class="subtitle">Cute + clean version ✨</div>
+<!-- RECORDS -->
+<div class="card">
+<input id="search" placeholder="🔍 Search..." onkeyup="search()">
+{f"<table id='table'>{rows}</table>" if records else "No data 💤"}
+</div>
 
-        <!-- STATS -->
-        <div class="stats">
-            <div class="stat-card">
-                <div class="stat-title">📚 Total Records</div>
-                <div class="stat-number">{total}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-title">👥 Students</div>
-                <div class="stat-number">{unique}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-title">⭐ Priority</div>
-                <div class="stat-number">{priority_count}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-title">🏆 Top Student</div>
-                <div>{top_student}</div>
-                <div>Missing: {top_missing}</div>
-            </div>
-        </div>
+</div>
 
-        <!-- ADD -->
-        <div class="card">
-            <h2>Add Record</h2>
-            <form class="add-form" action="/add" method="post">
-                <input name="level" placeholder="Level" required>
-                <input name="subject" placeholder="Subject" required>
-                <input name="homework" placeholder="Homework" required>
-                <input name="student" placeholder="Student" required>
-                <label>
-                    <input type="checkbox" name="priority"> ⭐ Priority
-                </label>
-                <button>Add</button>
-            </form>
-        </div>
+<script>
+function search() {{
+    let input = document.getElementById("search").value.toLowerCase();
+    let rows = document.querySelectorAll("#table tr");
+    rows.forEach((row,i)=>{{
+        if(i===0)return;
+        row.style.display = row.innerText.toLowerCase().includes(input) ? "" : "none";
+    }});
+}}
 
-        <!-- PRIORITY -->
-        <div class="card">
-            <h2>⭐ Priority Students</h2>
-            {f"<table>{priority_rows}</table>" if priority_rows else "None 🎉"}
-        </div>
+function toggleDark() {{
+    document.body.classList.toggle("dark");
+    localStorage.setItem("dark", document.body.classList.contains("dark"));
+}}
 
-        <!-- RECORDS -->
-        <div class="card">
-            <h2>Records</h2>
-            <input class="search" id="search" placeholder="🔍 Search..." onkeyup="search()">
-            {f"<table id='table'>{rows}</table>" if records else "No data"}
-        </div>
+if(localStorage.getItem("dark")==="true") {{
+    document.body.classList.add("dark");
+}}
+</script>
 
-    </div>
-
-    <script>
-    function search() {{
-        let input = document.getElementById("search").value.toLowerCase();
-        let rows = document.querySelectorAll("#table tr");
-        rows.forEach((row, i) => {{
-            if (i === 0) return;
-            row.style.display =
-                row.innerText.toLowerCase().includes(input)
-                ? ""
-                : "none";
-        }});
-    }}
-    </script>
-
-    </body>
-    </html>
-    """
+</body>
+</html>
+"""
 
 # =========================
 # ADD
@@ -389,17 +319,34 @@ def add(
 
     conn.commit()
     conn.close()
-
     return RedirectResponse("/", status_code=303)
 
 # =========================
 # DELETE
 # =========================
 @app.post("/delete/{record_id}")
-def delete_record(record_id: int):
+def delete(record_id: int):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM homework WHERE id = ?", (record_id,))
+    cursor.execute("DELETE FROM homework WHERE id=?", (record_id,))
     conn.commit()
     conn.close()
     return RedirectResponse("/", status_code=303)
+
+# =========================
+# EXPORT CSV
+# =========================
+@app.get("/export")
+def export():
+    records = load_records()
+
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Date","Level","Subject","Homework","Student","Priority"])
+
+    for r in records:
+        writer.writerow([r["Date"], r["Level"], r["Subject"], r["Homework"], r["Student"], r["Priority"]])
+
+    output.seek(0)
+    return StreamingResponse(output, media_type="text/csv",
+        headers={{"Content-Disposition": "attachment; filename=homework.csv"}})
