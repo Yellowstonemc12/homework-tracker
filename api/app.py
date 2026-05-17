@@ -42,6 +42,7 @@ def load_records():
     """)
     rows = cursor.fetchall()
     conn.close()
+
     return [
         {
             "ID": r[0],
@@ -122,8 +123,12 @@ def home():
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
 
 <style>
+* {{
+    font-family: 'Fredoka', sans-serif;
+}}
+
 :root {{
-    --bg: #f6f8ff;
+    --bg: #f5f7fb;
     --card: #ffffff;
     --text: #222;
     --accent: #4f46e5;
@@ -136,7 +141,6 @@ def home():
 }}
 
 body {{
-    font-family: 'Fredoka', sans-serif;
     background: var(--bg);
     color: var(--text);
     padding: 30px;
@@ -149,7 +153,7 @@ body {{
 }}
 
 .title {{
-    font-size: 50px;
+    font-size: 48px;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -166,7 +170,12 @@ body {{
     padding: 22px;
     border-radius: 20px;
     margin-bottom: 20px;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+    transition: 0.2s;
+}}
+
+.card:hover {{
+    transform: translateY(-3px);
 }}
 
 .grid {{
@@ -176,7 +185,7 @@ body {{
 }}
 
 .big {{
-    font-size: 32px;
+    font-size: 30px;
     color: var(--accent);
 }}
 
@@ -184,7 +193,8 @@ input {{
     padding: 12px;
     border-radius: 12px;
     border: 2px solid #ddd;
-    margin: 5px;
+    margin: 6px;
+    width: 100%;
 }}
 
 input:focus {{
@@ -199,6 +209,11 @@ button {{
     background: var(--accent);
     color: white;
     cursor: pointer;
+    transition: 0.2s;
+}}
+
+button:hover {{
+    opacity: 0.9;
 }}
 
 .delete {{
@@ -223,6 +238,7 @@ button {{
 table {{
     width: 100%;
     border-collapse: collapse;
+    margin-top: 10px;
 }}
 
 th {{
@@ -240,11 +256,12 @@ tr:hover {{
     background: rgba(0,0,0,0.05);
 }}
 
+/* SETTINGS PANEL */
 #settingsPanel {{
     position: fixed;
     top: 0;
-    right: -300px;
-    width: 280px;
+    right: -260px;
+    width: 260px;
     height: 100%;
     background: var(--card);
     box-shadow: -5px 0 20px rgba(0,0,0,0.1);
@@ -256,11 +273,15 @@ tr:hover {{
     right: 0;
 }}
 
+.setting-item {{
+    margin: 15px 0;
+}}
+
 .color-option {{
     display: block;
-    padding: 10px;
-    margin: 5px 0;
-    border-radius: 10px;
+    padding: 8px;
+    border-radius: 8px;
+    margin-top: 5px;
     cursor: pointer;
     text-align: center;
     color: white;
@@ -273,28 +294,29 @@ tr:hover {{
 <div id="settingsPanel">
 <h3>⚙ Settings</h3>
 
-<button onclick="toggleDark()">🌙 Toggle Dark Mode</button>
+<div class="setting-item">
+<button onclick="toggleDark()">🌙 Dark Mode</button>
+</div>
 
-<h4>🎨 Theme Color</h4>
-
+<div class="setting-item">
+<p>Theme</p>
 <div class="color-option" style="background:#4f46e5" onclick="setColor('#4f46e5')">Blue</div>
 <div class="color-option" style="background:#16a34a" onclick="setColor('#16a34a')">Green</div>
 <div class="color-option" style="background:#dc2626" onclick="setColor('#dc2626')">Red</div>
 <div class="color-option" style="background:#f59e0b" onclick="setColor('#f59e0b')">Orange</div>
-
+</div>
 </div>
 
 <div class="container">
 
 <div class="title">
-<img src="https://cdn-icons-png.flaticon.com/512/2436/2436636.png" width="45">
-Homework Tracker
+📚 Homework Tracker
 <span class="settings-btn" onclick="toggleSettings()">⚙</span>
 </div>
 
 <!-- STATS -->
 <div class="grid">
-<div class="card">📚<div class="big">{total}</div></div>
+<div class="card">📊<div class="big">{total}</div></div>
 <div class="card">👥<div class="big">{unique}</div></div>
 <div class="card">⭐<div class="big">{priority_count}</div></div>
 <div class="card">🏆 {top_student}<br>{top_missing}</div>
@@ -309,13 +331,14 @@ Homework Tracker
 <input name="homework" placeholder="Homework" required>
 <input name="student" placeholder="Student" required>
 <label><input type="checkbox" name="priority"> Priority</label>
+<br><br>
 <button>Add</button>
 </form>
 </div>
 
 <!-- PRIORITY -->
 <div class="card">
-<h3>⭐ Priority Students</h3>
+<h3>Priority Students</h3>
 {f"<table>{priority_rows}</table>" if priority_rows else "None 🎉"}
 </div>
 
@@ -377,8 +400,10 @@ function setColor(color) {{
 def add(level: str = Form(...), subject: str = Form(...),
         homework: str = Form(...), student: str = Form(...),
         priority: str = Form(None)):
+
     conn = get_connection()
     cursor = conn.cursor()
+
     cursor.execute("""
         INSERT INTO homework (date, level, subject, homework, student, priority)
         VALUES (?, ?, ?, ?, ?, ?)
@@ -390,8 +415,10 @@ def add(level: str = Form(...), subject: str = Form(...),
         student.strip(),
         1 if priority else 0
     ))
+
     conn.commit()
     conn.close()
+
     return RedirectResponse("/", status_code=303)
 
 # ================= DELETE =================
@@ -410,9 +437,19 @@ def export():
     records = load_records()
     output = StringIO()
     writer = csv.writer(output)
+
     writer.writerow(["Date","Level","Subject","Homework","Student","Priority"])
+
     for r in records:
-        writer.writerow([r["Date"], r["Level"], r["Subject"], r["Homework"], r["Student"], r["Priority"]])
+        writer.writerow([
+            r["Date"], r["Level"], r["Subject"],
+            r["Homework"], r["Student"], r["Priority"]
+        ])
+
     output.seek(0)
-    return StreamingResponse(output, media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=homework.csv"})
+
+    return StreamingResponse(
+        output,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=homework.csv"}
+    )
