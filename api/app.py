@@ -40,6 +40,10 @@ def init_db():
 init_db()
 
 
+# =========================
+# LOAD RECORDS
+# =========================
+
 def load_records():
 
     conn = get_connection()
@@ -68,6 +72,10 @@ def load_records():
         for r in rows
     ]
 
+
+# =========================
+# COUNT MISSED HOMEWORK
+# =========================
 
 def get_student_count(student_name):
 
@@ -123,7 +131,7 @@ def home():
     )
 
     # =========================
-    # MAIN RECORDS TABLE
+    # MAIN TABLE
     # =========================
 
     rows = "".join(
@@ -155,7 +163,11 @@ def home():
 
             <td>
 
-                <form action="/delete/{r['ID']}" method="post">
+                <form
+                    action="/delete/{r['ID']}"
+                    method="post"
+                    onsubmit="return confirm('Delete this record?')"
+                >
 
                     <button class="delete-btn" type="submit">
                         🗑 Delete
@@ -178,7 +190,7 @@ def home():
 
     <head>
 
-        <title>Homework Tracker</title>
+        <title>📘 Homework Tracker</title>
 
         <meta name="viewport" content="width=device-width, initial-scale=1">
 
@@ -192,18 +204,22 @@ def home():
             }}
 
             body {{
-                background: #f4f7fb;
+                background: linear-gradient(
+                    to bottom right,
+                    #eef4ff,
+                    #f9fbff
+                );
                 color: #222;
                 padding: 40px;
             }}
 
             .container {{
-                max-width: 1100px;
+                max-width: 1200px;
                 margin: auto;
             }}
 
             .title {{
-                font-size: 42px;
+                font-size: 46px;
                 font-weight: bold;
                 margin-bottom: 10px;
             }}
@@ -216,8 +232,8 @@ def home():
             .card {{
                 background: white;
                 padding: 25px;
-                border-radius: 18px;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+                border-radius: 20px;
+                box-shadow: 0 6px 18px rgba(0,0,0,0.08);
                 margin-bottom: 30px;
             }}
 
@@ -232,10 +248,15 @@ def home():
             }}
 
             input {{
-                padding: 12px;
+                padding: 13px;
                 border: 1px solid #ddd;
-                border-radius: 10px;
+                border-radius: 12px;
                 font-size: 15px;
+            }}
+
+            .search-box {{
+                margin-bottom: 20px;
+                width: 100%;
             }}
 
             button {{
@@ -253,6 +274,7 @@ def home():
 
             button:hover {{
                 background: #1d4ed8;
+                transform: translateY(-2px);
             }}
 
             .delete-btn {{
@@ -260,9 +282,6 @@ def home():
                 padding: 8px 12px;
                 border-radius: 8px;
                 font-size: 14px;
-                border: none;
-                color: white;
-                cursor: pointer;
             }}
 
             .delete-btn:hover {{
@@ -288,8 +307,12 @@ def home():
                 border-bottom: 1px solid #eee;
             }}
 
+            tr {{
+                transition: 0.2s;
+            }}
+
             tr:hover {{
-                background: #f9fbff;
+                background: #f3f7ff;
             }}
 
             .empty {{
@@ -353,7 +376,7 @@ def home():
                 }}
 
                 .title {{
-                    font-size: 32px;
+                    font-size: 34px;
                 }}
 
                 table {{
@@ -376,8 +399,10 @@ def home():
             </div>
 
             <div class="subtitle">
-                Manage student homework submissions easily
+                Track homework like a classroom command center 🚀
             </div>
+
+            <!-- PRIORITY -->
 
             <div class="card">
 
@@ -404,6 +429,8 @@ def home():
                 }
 
             </div>
+
+            <!-- ADD FORM -->
 
             <div class="card">
 
@@ -459,13 +486,23 @@ def home():
 
             </div>
 
+            <!-- RECORDS -->
+
             <div class="card">
 
                 <h2>📋 Records</h2>
 
+                <input
+                    type="text"
+                    id="searchInput"
+                    class="search-box"
+                    placeholder="🔍 Search student..."
+                    onkeyup="searchTable()"
+                >
+
                 {
                     f'''
-                    <table>
+                    <table id="recordsTable">
 
                         <tr>
                             <th>Date</th>
@@ -488,6 +525,41 @@ def home():
             </div>
 
         </div>
+
+        <script>
+
+            function searchTable() {{
+
+                let input =
+                    document.getElementById("searchInput");
+
+                let filter =
+                    input.value.toLowerCase();
+
+                let table =
+                    document.getElementById("recordsTable");
+
+                let tr =
+                    table.getElementsByTagName("tr");
+
+                for (let i = 1; i < tr.length; i++) {{
+
+                    let td = tr[i].getElementsByTagName("td")[4];
+
+                    if (td) {{
+
+                        let text =
+                            td.textContent || td.innerText;
+
+                        tr[i].style.display =
+                            text.toLowerCase().includes(filter)
+                            ? ""
+                            : "none";
+                    }}
+                }}
+            }}
+
+        </script>
 
     </body>
 
@@ -515,26 +587,48 @@ def add(
 
     is_priority = 1 if priority else 0
 
+    # Prevent duplicates 🛡️
+
     cursor.execute("""
-        INSERT INTO homework (
-            date,
-            level,
-            subject,
-            homework,
-            student,
-            priority
-        )
-        VALUES (?, ?, ?, ?, ?, ?)
+        SELECT *
+        FROM homework
+        WHERE
+            level = ?
+            AND subject = ?
+            AND homework = ?
+            AND student = ?
     """, (
-        datetime.now().strftime("%Y-%m-%d"),
         level.strip(),
         subject.strip(),
         homework.strip(),
-        student.strip(),
-        is_priority
+        student.strip()
     ))
 
-    conn.commit()
+    existing = cursor.fetchone()
+
+    if not existing:
+
+        cursor.execute("""
+            INSERT INTO homework (
+                date,
+                level,
+                subject,
+                homework,
+                student,
+                priority
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            datetime.now().strftime("%Y-%m-%d"),
+            level.strip(),
+            subject.strip(),
+            homework.strip(),
+            student.strip(),
+            is_priority
+        ))
+
+        conn.commit()
+
     conn.close()
 
     return RedirectResponse("/", status_code=303)
@@ -559,3 +653,4 @@ def delete_record(record_id: int):
     conn.close()
 
     return RedirectResponse("/", status_code=303)
+``` ✨
