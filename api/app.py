@@ -7,17 +7,14 @@ app = FastAPI()
 
 DB_PATH = "/tmp/homework.db"
 
-
 # =========================
 # DATABASE
 # =========================
-
 def get_connection():
-    return sqlite3.connect(DB_PATH)
+    return sqlite3.connect(DB_PATH, check_same_thread=False)
 
 
 def init_db():
-
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -39,13 +36,10 @@ def init_db():
 
 init_db()
 
-
 # =========================
 # LOAD RECORDS
 # =========================
-
 def load_records():
-
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -56,7 +50,6 @@ def load_records():
     """)
 
     rows = cursor.fetchall()
-
     conn.close()
 
     return [
@@ -72,55 +65,36 @@ def load_records():
         for r in rows
     ]
 
-
 # =========================
-# STUDENT MISSING COUNT
+# STUDENT COUNTS (OPTIMIZED)
 # =========================
-
-def get_student_count(student_name):
-
+def get_all_student_counts():
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT COUNT(*)
+        SELECT student, COUNT(*)
         FROM homework
-        WHERE student = ?
-    """, (student_name,))
+        GROUP BY student
+    """)
 
-    count = cursor.fetchone()[0]
-
+    data = dict(cursor.fetchall())
     conn.close()
-
-    return count
-
+    return data
 
 # =========================
-# TOP MISSING STUDENT
+# TOP STUDENT
 # =========================
-
-def get_top_student(records):
-
-    if not records:
+def get_top_student(counts):
+    if not counts:
         return ("None", 0)
 
-    student_counts = {}
-
-    for r in records:
-
-        name = r["Student"]
-
-        student_counts[name] = student_counts.get(name, 0) + 1
-
-    top_student = max(student_counts, key=student_counts.get)
-
-    return (top_student, student_counts[top_student])
-
+    top_student = max(counts, key=counts.get)
+    return (top_student, counts[top_student])
 
 # =========================
 # ROUTES
 # =========================
-
 @app.get("/favicon.ico")
 def favicon():
     return Response(status_code=204)
@@ -128,565 +102,227 @@ def favicon():
 
 @app.get("/", response_class=HTMLResponse)
 def home():
-
     records = load_records()
+    counts = get_all_student_counts()
 
     total_records = len(records)
+    unique_students = len(counts)
+    priority_students = len([r for r in records if r["Priority"] == 1])
 
-    unique_students = len(set(r["Student"] for r in records))
-
-    priority_students = len(
-        [r for r in records if r["Priority"] == 1]
-    )
-
-    top_student, top_missing = get_top_student(records)
+    top_student, top_missing = get_top_student(counts)
 
     # =========================
     # PRIORITY TABLE
     # =========================
-
     priority_rows = "".join(
         f"""
         <tr>
             <td>{r['Student']}</td>
             <td>{r['Homework']}</td>
             <td>{r['Subject']}</td>
-
-            <td>
-                <span class='priority-badge'>
-                    ⭐ PRIORITY
-                </span>
-            </td>
+            <td><span class='priority-badge'>⭐ PRIORITY</span></td>
         </tr>
         """
-        for r in records
-        if r["Priority"] == 1
+        for r in records if r["Priority"] == 1
     )
 
     # =========================
     # RECORDS TABLE
     # =========================
-
     rows = "".join(
         f"""
         <tr>
-
             <td>{r['Date']}</td>
-
             <td>{r['Level']}</td>
-
             <td>{r['Subject']}</td>
-
             <td>{r['Homework']}</td>
-
             <td>
-
                 {r['Student']}
-
-                {
-                    "<span class='priority-badge'>⭐</span>"
-                    if r['Priority'] == 1 else ""
-                }
-
+                {"<span class='priority-badge'>⭐</span>" if r['Priority'] == 1 else ""}
                 <span class='counter-badge'>
-                    Missing: {get_student_count(r['Student'])}
+                    Missing: {counts.get(r['Student'], 0)}
                 </span>
-
             </td>
-
             <td>
-
                 <form action="/delete/{r['ID']}" method="post">
-
-                    <button class="delete-btn" type="submit">
-                        🗑 Delete
-                    </button>
-
+                    <button class="delete-btn" type="submit">🗑 Delete</button>
                 </form>
-
             </td>
-
         </tr>
         """
         for r in records
     )
 
     return f"""
-
     <!DOCTYPE html>
-
     <html>
-
     <head>
-
         <title>Homework Tracker</title>
-
         <meta name="viewport" content="width=device-width, initial-scale=1">
 
         <style>
+        body {{
+            font-family: Arial;
+            background: #f4f7fb;
+            padding: 40px;
+        }}
 
-            * {{
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
-                font-family: Arial, sans-serif;
-            }}
+        .container {{
+            max-width: 1200px;
+            margin: auto;
+        }}
 
-            body {{
-                background: #f4f7fb;
-                color: #222;
-                padding: 40px;
-            }}
+        .title {{
+            font-size: 42px;
+            font-weight: bold;
+        }}
 
-            .container {{
-                max-width: 1200px;
-                margin: auto;
-            }}
+        .stats {{
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin: 30px 0;
+        }}
 
-            .title {{
-                font-size: 52px;
-                font-weight: bold;
-                margin-bottom: 10px;
-            }}
+        .card {{
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+            margin-bottom: 20px;
+        }}
 
-            .subtitle {{
-                color: #666;
-                margin-bottom: 35px;
-                font-size: 18px;
-            }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+        }}
 
-            .stats-grid {{
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-                gap: 20px;
-                margin-bottom: 30px;
-            }}
+        th {{
+            background: #2563eb;
+            color: white;
+            padding: 10px;
+        }}
 
-            .stat-card {{
-                background: white;
-                padding: 25px;
-                border-radius: 22px;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-            }}
+        td {{
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }}
 
-            .stat-title {{
-                font-size: 16px;
-                color: #555;
-                margin-bottom: 15px;
-            }}
+        .priority-badge {{
+            background: gold;
+            padding: 4px 8px;
+            border-radius: 10px;
+            margin-left: 5px;
+        }}
 
-            .stat-number {{
-                font-size: 42px;
-                font-weight: bold;
-                color: #2563eb;
-            }}
+        .counter-badge {{
+            background: red;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 10px;
+            margin-left: 5px;
+        }}
 
-            .leaderboard-name {{
-                font-size: 18px;
-                font-weight: bold;
-                color: #2563eb;
-                margin-bottom: 8px;
-            }}
+        .delete-btn {{
+            background: red;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+        }}
 
-            .card {{
-                background: white;
-                padding: 25px;
-                border-radius: 18px;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-                margin-bottom: 30px;
-            }}
+        input {{
+            padding: 10px;
+            margin: 5px;
+        }}
 
-            .card h2 {{
-                margin-bottom: 20px;
-            }}
-
-            .add-form {{
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 15px;
-            }}
-
-            input {{
-                padding: 12px;
-                border: 1px solid #ddd;
-                border-radius: 10px;
-                font-size: 15px;
-            }}
-
-            button {{
-                grid-column: span 2;
-                padding: 14px;
-                border: none;
-                border-radius: 12px;
-                background: #2563eb;
-                color: white;
-                font-size: 16px;
-                font-weight: bold;
-                cursor: pointer;
-                transition: 0.2s;
-            }}
-
-            button:hover {{
-                background: #1d4ed8;
-            }}
-
-            .delete-btn {{
-                background: #dc2626;
-                padding: 8px 12px;
-                border-radius: 8px;
-                font-size: 14px;
-                border: none;
-                color: white;
-                cursor: pointer;
-            }}
-
-            .delete-btn:hover {{
-                background: #b91c1c;
-            }}
-
-            table {{
-                width: 100%;
-                border-collapse: collapse;
-                overflow: hidden;
-                border-radius: 12px;
-            }}
-
-            th {{
-                background: #2563eb;
-                color: white;
-                padding: 14px;
-                text-align: left;
-            }}
-
-            td {{
-                padding: 14px;
-                border-bottom: 1px solid #eee;
-            }}
-
-            tr:hover {{
-                background: #f9fbff;
-            }}
-
-            .empty {{
-                text-align: center;
-                color: #777;
-                padding: 30px;
-            }}
-
-            .priority-label {{
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                font-weight: bold;
-                color: #d97706;
-            }}
-
-            .priority-badge {{
-                display: inline-block;
-                background: #facc15;
-                color: #222;
-                padding: 4px 10px;
-                border-radius: 999px;
-                font-size: 12px;
-                font-weight: bold;
-                margin-left: 8px;
-            }}
-
-            .counter-badge {{
-                display: inline-block;
-                background: #ef4444;
-                color: white;
-                padding: 4px 10px;
-                border-radius: 999px;
-                font-size: 12px;
-                font-weight: bold;
-                margin-left: 8px;
-            }}
-
-            .records-header {{
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 20px;
-                gap: 20px;
-            }}
-
-            #searchInput {{
-                width: 300px;
-            }}
-
-            @media (max-width: 700px) {{
-
-                body {{
-                    padding: 20px;
-                }}
-
-                .add-form {{
-                    grid-template-columns: 1fr;
-                }}
-
-                button {{
-                    grid-column: span 1;
-                }}
-
-                .title {{
-                    font-size: 36px;
-                }}
-
-                .records-header {{
-                    flex-direction: column;
-                    align-items: stretch;
-                }}
-
-                #searchInput {{
-                    width: 100%;
-                }}
-
-                table {{
-                    font-size: 14px;
-                    display: block;
-                    overflow-x: auto;
-                }}
-            }}
-
+        button {{
+            padding: 10px;
+            background: blue;
+            color: white;
+            border: none;
+        }}
         </style>
-
     </head>
 
     <body>
+    <div class="container">
 
-        <div class="container">
+        <div class="title">📘 Homework Tracker</div>
 
-            <div class="title">
-                📘 Homework Tracker
-            </div>
-
-            <div class="subtitle">
-                Manage student homework submissions easily
-            </div>
-
-            <!-- STATS -->
-
-            <div class="stats-grid">
-
-                <div class="stat-card">
-                    <div class="stat-title">📚 Total Records</div>
-                    <div class="stat-number">{total_records}</div>
-                </div>
-
-                <div class="stat-card">
-                    <div class="stat-title">👥 Unique Students</div>
-                    <div class="stat-number">{unique_students}</div>
-                </div>
-
-                <div class="stat-card">
-                    <div class="stat-title">⭐ Priority Students</div>
-                    <div class="stat-number">{priority_students}</div>
-                </div>
-
-                <div class="stat-card">
-                    <div class="stat-title">🏆 Top Missing Student</div>
-
-                    <div class="leaderboard-name">
-                        {top_student}
-                    </div>
-
-                    <div>
-                        Missing: {top_missing}
-                    </div>
-                </div>
-
-            </div>
-
-            <!-- ADD RECORD -->
-
-            <div class="card">
-
-                <h2>➕ Add Record</h2>
-
-                <form class="add-form" action="/add" method="post">
-
-                    <input
-                        type="text"
-                        name="level"
-                        placeholder="Primary Level"
-                        required
-                    >
-
-                    <input
-                        type="text"
-                        name="subject"
-                        placeholder="Subject"
-                        required
-                    >
-
-                    <input
-                        type="text"
-                        name="homework"
-                        placeholder="Homework Name"
-                        required
-                    >
-
-                    <input
-                        type="text"
-                        name="student"
-                        placeholder="Student Name"
-                        required
-                    >
-
-                    <label class="priority-label">
-
-                        <input type="checkbox" name="priority">
-
-                        ⭐ Priority Student
-
-                    </label>
-
-                    <button type="submit">
-                        Add Record
-                    </button>
-
-                </form>
-
-            </div>
-
-            <!-- PRIORITY STUDENTS -->
-
-            <div class="card">
-
-                <h2>⭐ Priority Students</h2>
-
-                {
-                    f'''
-                    <table>
-
-                        <tr>
-                            <th>Student</th>
-                            <th>Homework</th>
-                            <th>Subject</th>
-                            <th>Status</th>
-                        </tr>
-
-                        {priority_rows}
-
-                    </table>
-                    '''
-                    if priority_rows
-                    else
-                    '<div class="empty">No priority students 🎉</div>'
-                }
-
-            </div>
-
-            <!-- RECORDS -->
-
-            <div class="card">
-
-                <div class="records-header">
-
-                    <h2>📋 Records</h2>
-
-                    <input
-                        type="text"
-                        id="searchInput"
-                        placeholder="🔍 Search student..."
-                        onkeyup="searchTable()"
-                    >
-
-                </div>
-
-                {
-                    f'''
-                    <table id="recordsTable">
-
-                        <tr>
-                            <th>Date</th>
-                            <th>Level</th>
-                            <th>Subject</th>
-                            <th>Homework</th>
-                            <th>Student</th>
-                            <th>Action</th>
-                        </tr>
-
-                        {rows}
-
-                    </table>
-                    '''
-                    if records
-                    else
-                    '<div class="empty">No records yet 🌱</div>'
-                }
-
-            </div>
-
+        <!-- STATS -->
+        <div class="stats">
+            <div class="card">📚 Total: {total_records}</div>
+            <div class="card">👥 Students: {unique_students}</div>
+            <div class="card">⭐ Priority: {priority_students}</div>
+            <div class="card">🏆 {top_student} ({top_missing})</div>
         </div>
 
-        <script>
+        <!-- ADD -->
+        <div class="card">
+            <h2>Add Record</h2>
+            <form action="/add" method="post">
+                <input name="level" placeholder="Level" required>
+                <input name="subject" placeholder="Subject" required>
+                <input name="homework" placeholder="Homework" required>
+                <input name="student" placeholder="Student" required>
+                <label>
+                    <input type="checkbox" name="priority"> Priority
+                </label>
+                <button>Add</button>
+            </form>
+        </div>
 
-        function searchTable() {{
+        <!-- PRIORITY -->
+        <div class="card">
+            <h2>Priority Students</h2>
+            {f"<table>{priority_rows}</table>" if priority_rows else "None"}
+        </div>
 
-            let input = document.getElementById("searchInput");
+        <!-- RECORDS -->
+        <div class="card">
+            <h2>Records</h2>
+            <input id="search" placeholder="Search..." onkeyup="search()">
 
-            let filter = input.value.toLowerCase();
+            {f"<table id='table'>{rows}</table>" if records else "No data"}
+        </div>
 
-            let table = document.getElementById("recordsTable");
+    </div>
 
-            let tr = table.getElementsByTagName("tr");
+    <script>
+    function search() {{
+        let input = document.getElementById("search").value.toLowerCase();
+        let rows = document.querySelectorAll("#table tr");
 
-            for (let i = 1; i < tr.length; i++) {{
-
-                let td = tr[i].getElementsByTagName("td")[4];
-
-                if (td) {{
-
-                    let textValue =
-                        td.textContent || td.innerText;
-
-                    tr[i].style.display =
-                        textValue.toLowerCase().includes(filter)
-                        ? ""
-                        : "none";
-                }}
-            }}
-        }}
-
-        </script>
+        rows.forEach((row, i) => {{
+            if (i === 0) return;
+            let text = row.innerText.toLowerCase();
+            row.style.display = text.includes(input) ? "" : "none";
+        }});
+    }}
+    </script>
 
     </body>
-
     </html>
     """
 
 
 # =========================
-# ADD RECORD
+# ADD
 # =========================
-
 @app.post("/add")
 def add(
-
     level: str = Form(...),
     subject: str = Form(...),
     homework: str = Form(...),
     student: str = Form(...),
     priority: str = Form(None)
-
 ):
-
     conn = get_connection()
     cursor = conn.cursor()
 
-    is_priority = 1 if priority else 0
-
     cursor.execute("""
-        INSERT INTO homework (
-            date,
-            level,
-            subject,
-            homework,
-            student,
-            priority
-        )
+        INSERT INTO homework (date, level, subject, homework, student, priority)
         VALUES (?, ?, ?, ?, ?, ?)
     """, (
         datetime.now().strftime("%Y-%m-%d"),
@@ -694,7 +330,7 @@ def add(
         subject.strip(),
         homework.strip(),
         student.strip(),
-        is_priority
+        1 if priority else 0
     ))
 
     conn.commit()
@@ -704,19 +340,14 @@ def add(
 
 
 # =========================
-# DELETE RECORD
+# DELETE
 # =========================
-
 @app.post("/delete/{record_id}")
 def delete_record(record_id: int):
-
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(
-        "DELETE FROM homework WHERE id = ?",
-        (record_id,)
-    )
+    cursor.execute("DELETE FROM homework WHERE id = ?", (record_id,))
 
     conn.commit()
     conn.close()
