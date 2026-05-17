@@ -123,10 +123,10 @@ def home():
 
 <style>
 :root {{
-    --bg: #f9fafb;
+    --bg: #f6f8ff;
     --card: #ffffff;
-    --text: #2d2d2d;
-    --accent: #2563eb; /* default BLUE */
+    --text: #222;
+    --accent: #4f46e5;
 }}
 
 .dark {{
@@ -140,6 +140,7 @@ body {{
     background: var(--bg);
     color: var(--text);
     padding: 30px;
+    transition: 0.3s;
 }}
 
 .container {{
@@ -148,12 +149,16 @@ body {{
 }}
 
 .title {{
-    font-size: 52px;
-    font-weight: 600;
-    color: var(--accent);
+    font-size: 50px;
     display: flex;
     align-items: center;
     gap: 10px;
+}}
+
+.settings-btn {{
+    margin-left: auto;
+    cursor: pointer;
+    font-size: 22px;
 }}
 
 .card {{
@@ -189,7 +194,7 @@ input:focus {{
 
 button {{
     padding: 10px 16px;
-    border-radius: 14px;
+    border-radius: 12px;
     border: none;
     background: var(--accent);
     color: white;
@@ -231,61 +236,66 @@ td {{
     border-bottom: 1px solid #eee;
 }}
 
-.toggle {{
-    margin-left: auto;
-    cursor: pointer;
-    font-size: 22px;
+tr:hover {{
+    background: rgba(0,0,0,0.05);
 }}
 
-#settings {{
-    display:none;
-    position:fixed;
-    top:20px;
-    right:20px;
-    background:white;
-    padding:20px;
-    border-radius:16px;
-    box-shadow:0 10px 30px rgba(0,0,0,0.2);
+#settingsPanel {{
+    position: fixed;
+    top: 0;
+    right: -300px;
+    width: 280px;
+    height: 100%;
+    background: var(--card);
+    box-shadow: -5px 0 20px rgba(0,0,0,0.1);
+    padding: 20px;
+    transition: 0.3s;
+}}
+
+#settingsPanel.open {{
+    right: 0;
+}}
+
+.color-option {{
+    display: block;
+    padding: 10px;
+    margin: 5px 0;
+    border-radius: 10px;
+    cursor: pointer;
+    text-align: center;
+    color: white;
 }}
 </style>
 </head>
 
 <body>
+
+<div id="settingsPanel">
+<h3>⚙ Settings</h3>
+
+<button onclick="toggleDark()">🌙 Toggle Dark Mode</button>
+
+<h4>🎨 Theme Color</h4>
+
+<div class="color-option" style="background:#4f46e5" onclick="setColor('#4f46e5')">Blue</div>
+<div class="color-option" style="background:#16a34a" onclick="setColor('#16a34a')">Green</div>
+<div class="color-option" style="background:#dc2626" onclick="setColor('#dc2626')">Red</div>
+<div class="color-option" style="background:#f59e0b" onclick="setColor('#f59e0b')">Orange</div>
+
+</div>
+
 <div class="container">
 
 <div class="title">
 <img src="https://cdn-icons-png.flaticon.com/512/2436/2436636.png" width="45">
 Homework Tracker
-<span class="toggle" onclick="toggleSettings()">⚙️</span>
-</div>
-
-<!-- SETTINGS PANEL -->
-<div id="settings">
-<h3>Settings</h3>
-
-<label>
-<input type="checkbox" onchange="toggleDark()"> Dark Mode
-</label>
-
-<br><br>
-
-<label>Theme:</label><br>
-<select onchange="setTheme(this.value)">
-<option value="#2563eb">Blue</option>
-<option value="#10b981">Green</option>
-<option value="#f59e0b">Orange</option>
-<option value="#8b5cf6">Purple</option>
-<option value="#ef4444">Red</option>
-</select>
-
-<br><br>
-<button onclick="toggleSettings()">Close</button>
+<span class="settings-btn" onclick="toggleSettings()">⚙</span>
 </div>
 
 <!-- STATS -->
 <div class="grid">
 <div class="card">📚<div class="big">{total}</div></div>
-<div class="card">👩‍🎓<div class="big">{unique}</div></div>
+<div class="card">👥<div class="big">{unique}</div></div>
 <div class="card">⭐<div class="big">{priority_count}</div></div>
 <div class="card">🏆 {top_student}<br>{top_missing}</div>
 </div>
@@ -306,7 +316,7 @@ Homework Tracker
 <!-- PRIORITY -->
 <div class="card">
 <h3>⭐ Priority Students</h3>
-{f"<table>{priority_rows}</table>" if priority_rows else "None"}
+{f"<table>{priority_rows}</table>" if priority_rows else "None 🎉"}
 </div>
 
 <!-- EXPORT -->
@@ -318,7 +328,6 @@ Homework Tracker
 <div class="card">
 <h3>Records</h3>
 <input id="search" placeholder="Search..." onkeyup="search()">
-
 {f'''
 <table id="table">
 <tr>
@@ -332,7 +341,6 @@ Homework Tracker
 {rows}
 </table>
 ''' if records else "No data"}
-
 </div>
 
 </div>
@@ -348,26 +356,15 @@ function search() {{
 }}
 
 function toggleSettings() {{
-    let panel = document.getElementById("settings");
-    panel.style.display = panel.style.display === "block" ? "none" : "block";
+    document.getElementById("settingsPanel").classList.toggle("open");
 }}
 
 function toggleDark() {{
     document.body.classList.toggle("dark");
-    localStorage.setItem("dark", document.body.classList.contains("dark"));
 }}
 
-function setTheme(color) {{
+function setColor(color) {{
     document.documentElement.style.setProperty('--accent', color);
-    localStorage.setItem("theme", color);
-}}
-
-if(localStorage.getItem("dark")==="true") {{
-    document.body.classList.add("dark");
-}}
-
-if(localStorage.getItem("theme")) {{
-    document.documentElement.style.setProperty('--accent', localStorage.getItem("theme"));
 }}
 </script>
 
@@ -380,7 +377,6 @@ if(localStorage.getItem("theme")) {{
 def add(level: str = Form(...), subject: str = Form(...),
         homework: str = Form(...), student: str = Form(...),
         priority: str = Form(None)):
-
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
