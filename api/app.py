@@ -45,14 +45,15 @@ def init_db():
 init_db()
 
 # ================= DATA =================
-def load_records():
+def load_records(user_id):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
     SELECT id,date,level,subject,homework,student,priority
     FROM homework
+    WHERE user_id=?
     ORDER BY priority DESC,id DESC
-    """)
+    """,(user_id,))
     rows = cursor.fetchall()
     conn.close()
 
@@ -62,13 +63,38 @@ def load_records():
         "Student":r[5],"Priority":r[6]
     } for r in rows]
 
-def get_counts():
+def get_counts(user_id):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT student,COUNT(*) FROM homework GROUP BY student")
+    cursor.execute("""
+    SELECT student,COUNT(*)
+    FROM homework
+    WHERE user_id=?
+    GROUP BY student
+    """,(user_id,))
     data = dict(cursor.fetchall())
     conn.close()
     return data
+
+def get_daily_counts(user_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    SELECT date, COUNT(*)
+    FROM homework
+    WHERE user_id=?
+    GROUP BY date
+    ORDER BY date
+    """,(user_id,))
+    data = cursor.fetchall()
+    conn.close()
+    return data
+
+def get_top(counts):
+    if not counts:
+        return ("None",0)
+    top = max(counts, key=counts.get)
+    return (top, counts[top])
 
 # ================= AUTH =================
 def auth_page(title, link):
@@ -77,13 +103,37 @@ def auth_page(title, link):
     <head>
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
     <style>
-    body{{font-family:Fredoka;background:#fdf2ff;
-    display:flex;justify-content:center;align-items:center;height:100vh;}}
-    .card{{background:white;padding:30px;border-radius:24px;width:320px;
-    box-shadow:0 10px 25px rgba(0,0,0,.1);text-align:center;}}
-    input{{width:100%;padding:12px;margin:10px 0;border-radius:14px;border:2px solid #ddd;}}
-    button{{width:100%;padding:12px;border:none;border-radius:14px;
-    background:#a78bfa;color:white;}}
+    body {{
+        font-family: 'Fredoka';
+        background: linear-gradient(135deg,#fdf2ff,#eef2ff);
+        display:flex;
+        justify-content:center;
+        align-items:center;
+        height:100vh;
+    }}
+    .card {{
+        background:white;
+        padding:30px;
+        border-radius:24px;
+        width:320px;
+        box-shadow:0 10px 25px rgba(0,0,0,.1);
+        text-align:center;
+    }}
+    input {{
+        width:100%;
+        padding:12px;
+        margin:10px 0;
+        border-radius:16px;
+        border:2px solid #ddd;
+    }}
+    button {{
+        width:100%;
+        padding:12px;
+        border:none;
+        border-radius:16px;
+        background:linear-gradient(45deg,#a78bfa,#6366f1);
+        color:white;
+    }}
     </style>
     </head>
     <body>
@@ -144,11 +194,21 @@ def logout():
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
 
-    if not request.cookies.get("user_id"):
+    user_id = request.cookies.get("user_id")
+    if not user_id:
         return RedirectResponse("/login")
 
-    records = load_records()
-    counts = get_counts()
+    records = load_records(user_id)
+    counts = get_counts(user_id)
+    daily = get_daily_counts(user_id)
+
+    total = len(records)
+    unique = len(counts)
+    priority_count = len([r for r in records if r["Priority"]])
+    top_student, top_score = get_top(counts)
+
+    labels = [d[0] for d in daily]
+    values = [d[1] for d in daily]
 
     rows = "".join(f"""
     <tr>
@@ -156,12 +216,11 @@ def home(request: Request):
     <td>{r['Level']}</td>
     <td>{r['Subject']}</td>
     <td>{r['Homework']}</td>
-    <td>{r['Student']}</td>
+    <td>{r['Student']} <span class="badge">{counts.get(r['Student'],0)}</span></td>
     <td>
-        <a href="/edit/{r['ID']}"><button>✏</button></a>
-        <form action="/delete/{r['ID']}" method="post" style="display:inline;">
-        <button class="delete">✕</button>
-        </form>
+    <form action="/delete/{r['ID']}" method="post">
+    <button class="delete">✕</button>
+    </form>
     </td>
     </tr>
     """ for r in records)
@@ -170,70 +229,206 @@ def home(request: Request):
 <html>
 <head>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body{{font-family:Fredoka;background:#fdf2ff;padding:30px;}}
-.card{{background:white;padding:20px;border-radius:20px;margin-bottom:20px;}}
+*{{font-family:'Fredoka';box-sizing:border-box;}}
 
-/* sparkle */
-.sparkle {{
-position: fixed;
-width: 6px;
-height: 6px;
-background: pink;
-border-radius: 50%;
-animation: pop 0.6s ease forwards;
+body {{
+background:linear-gradient(135deg,#fdf2ff,#eef2ff);
+padding:30px;
 }}
-@keyframes pop {{
-to {{transform:translateY(-40px);opacity:0;}}
+
+.container{{max-width:1100px;margin:auto;}}
+
+.card {{
+background:white;
+padding:20px;
+border-radius:24px;
+margin-bottom:20px;
+box-shadow:0 10px 25px rgba(0,0,0,.08);
+transition:.2s;
+}}
+
+.card:hover {{
+transform:translateY(-5px);
+}}
+
+.grid {{
+display:grid;
+grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+gap:20px;
+}}
+
+.big {{
+font-size:30px;
+background:linear-gradient(45deg,#a78bfa,#6366f1);
+-webkit-background-clip:text;
+-webkit-text-fill-color:transparent;
+}}
+
+input {{
+border-radius:16px;
+padding:12px;
+border:2px solid #ddd;
+width:100%;
+margin:6px 0;
+}}
+
+.checkbox {{
+display:flex;
+align-items:center;
+gap:8px;
+margin-top:10px;
+}}
+
+button {{
+border-radius:14px;
+padding:10px 14px;
+border:none;
+background:linear-gradient(45deg,#a78bfa,#6366f1);
+color:white;
+cursor:pointer;
+}}
+
+.delete {{background:#ef4444;}}
+
+.badge {{
+background:#fb7185;
+color:white;
+padding:4px 8px;
+border-radius:999px;
+margin-left:6px;
+}}
+
+table {{
+width:100%;
+border-collapse:separate;
+border-spacing:0 10px;
+}}
+
+thead th {{
+position:sticky;
+top:0;
+background:#f3e8ff;
+padding:12px;
+}}
+
+tbody tr {{
+background:white;
+border-radius:12px;
+}}
+
+td {{
+padding:12px;
+}}
+
+.header {{
+display:flex;
+justify-content:space-between;
+align-items:center;
 }}
 </style>
 </head>
 
 <body>
 
-<h1>
-<img src="https://api.iconify.design/ph:book-open-fill.svg?color=%23a78bfa" width="28">
-Homework Tracker
-</h1>
+<div class="container">
 
+<div class="header">
+<h1>Homework Tracker</h1>
 <a href="/logout"><button>Logout</button></a>
+</div>
+
+<div class="grid">
+<div class="card">Total<div class="big">{total}</div></div>
+<div class="card">Students<div class="big">{unique}</div></div>
+<div class="card">Priority<div class="big">{priority_count}</div></div>
+</div>
+
+<div class="card">
+<h3>Daily Entries</h3>
+<canvas id="chart"></canvas>
+</div>
+
+<div class="card">
+<h3>Top Student</h3>
+<b>{top_student}</b> ({top_score})
+</div>
 
 <div class="card">
 <h3>Add Record</h3>
-<form method="post" action="/add" onsubmit="sparkle(event)">
+<form method="post" action="/add">
 <input name="level" placeholder="Level">
 <input name="subject" placeholder="Subject">
 <input name="homework" placeholder="Homework">
 <input name="student" placeholder="Student">
-<label><input type="checkbox" name="priority"> Priority</label>
-<br><br>
+
+<div class="checkbox">
+<input type="checkbox" name="priority">
+<span>Priority</span>
+</div>
+
+<br>
 <button>Add</button>
 </form>
 </div>
 
 <div class="card">
-<h3>Records</h3>
+
+<div style="
+background:linear-gradient(45deg,#a78bfa,#6366f1);
+color:white;
+padding:16px;
+border-radius:16px;
+display:flex;
+justify-content:space-between;
+align-items:center;
+margin-bottom:15px;
+">
+<h3 style="margin:0;">Records</h3>
+
+<a href="/export">
+<button style="background:white;color:#6366f1;">
+Export CSV
+</button>
+</a>
+</div>
+
+<div style="background:#faf5ff;border-radius:16px;padding:12px;max-height:400px;overflow:auto;">
+
 <table>
+<thead>
 <tr>
-<th>Date</th><th>Level</th><th>Subject</th>
-<th>Homework</th><th>Student</th><th>Action</th>
+<th>Date</th>
+<th>Level</th>
+<th>Subject</th>
+<th>Homework</th>
+<th>Student</th>
+<th>Action</th>
 </tr>
+</thead>
+
+<tbody>
 {rows}
+</tbody>
+
 </table>
+
+</div>
+
+</div>
+
 </div>
 
 <script>
-function sparkle(e){{
-for(let i=0;i<10;i++){{
-let s=document.createElement('div');
-s.className='sparkle';
-s.style.left=event.clientX+'px';
-s.style.top=event.clientY+'px';
-document.body.appendChild(s);
-setTimeout(()=>s.remove(),600);
+new Chart(document.getElementById('chart'), {{
+type:'line',
+data:{{
+labels:{labels},
+datasets:[{{label:'Entries per Day',data:{values},borderColor:'#6366f1',fill:false}}]
 }}
-}}
+}});
 </script>
 
 </body>
@@ -249,11 +444,13 @@ homework: str = Form(...),
 student: str = Form(...),
 priority: str = Form(None)):
 
+    user_id = request.cookies.get("user_id")
+
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
     INSERT INTO homework VALUES (NULL,?,?,?,?,?,?,?)
-    """,(request.cookies.get("user_id"),
+    """,(user_id,
         datetime.now().strftime("%Y-%m-%d"),
         level,subject,homework,student,
         1 if priority else 0))
@@ -264,41 +461,12 @@ priority: str = Form(None)):
 
 # ================= DELETE =================
 @app.post("/delete/{id}")
-def delete(id: int):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM homework WHERE id=?", (id,))
-    conn.commit()
-    conn.close()
-    return RedirectResponse("/",303)
-
-# ================= EDIT =================
-@app.get("/edit/{id}", response_class=HTMLResponse)
-def edit_page(id: int):
-    return f"""
-    <form method="post">
-    <input name="level" placeholder="Level">
-    <input name="subject" placeholder="Subject">
-    <input name="homework" placeholder="Homework">
-    <input name="student" placeholder="Student">
-    <button>Save</button>
-    </form>
-    """
-
-@app.post("/edit/{id}")
-def edit(id: int,
-level: str = Form(...),
-subject: str = Form(...),
-homework: str = Form(...),
-student: str = Form(...)):
+def delete(request: Request, id: int):
+    user_id = request.cookies.get("user_id")
 
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
-    UPDATE homework
-    SET level=?, subject=?, homework=?, student=?
-    WHERE id=?
-    """,(level,subject,homework,student,id))
+    cursor.execute("DELETE FROM homework WHERE id=? AND user_id=?", (id,user_id))
     conn.commit()
     conn.close()
 
