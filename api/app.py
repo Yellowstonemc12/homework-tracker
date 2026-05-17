@@ -59,7 +59,7 @@ def load_records():
     ]
 
 # =========================
-# COUNTS (FAST)
+# COUNTS
 # =========================
 def get_all_student_counts():
     conn = get_connection()
@@ -103,7 +103,7 @@ def home():
             <td>{r['Student']}</td>
             <td>{r['Homework']}</td>
             <td>{r['Subject']}</td>
-            <td><span class='priority'>⭐ PRIORITY</span></td>
+            <td><span class='priority-badge'>⭐ PRIORITY</span></td>
         </tr>
         """
         for r in records if r["Priority"] == 1
@@ -119,14 +119,14 @@ def home():
             <td>{r['Homework']}</td>
             <td>
                 {r['Student']}
-                {"<span class='priority'>⭐</span>" if r['Priority'] else ""}
-                <span class='badge'>
+                {"<span class='priority-badge'>⭐</span>" if r['Priority'] else ""}
+                <span class='counter-badge'>
                     Missing: {counts.get(r['Student'], 0)}
                 </span>
             </td>
             <td>
                 <form action="/delete/{r['ID']}" method="post">
-                    <button class="delete">🗑</button>
+                    <button class="delete-btn">🗑</button>
                 </form>
             </td>
         </tr>
@@ -141,10 +141,16 @@ def home():
         <title>Homework Tracker</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
+
+        * {{
+            box-sizing: border-box;
+        }}
+
         body {{
-            font-family: Arial;
+            font-family: Arial, sans-serif;
             background: #f4f7fb;
             padding: 40px;
+            margin: 0;
         }}
 
         .container {{
@@ -153,7 +159,7 @@ def home():
         }}
 
         .title {{
-            font-size: 48px;
+            font-size: 50px;
             font-weight: bold;
         }}
 
@@ -162,80 +168,119 @@ def home():
             margin-bottom: 30px;
         }}
 
-        .grid {{
+        /* STATS */
+        .stats {{
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px,1fr));
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
             gap: 20px;
             margin-bottom: 30px;
         }}
 
-        .card {{
+        .stat-card {{
             background: white;
-            padding: 20px;
-            border-radius: 16px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            padding: 25px;
+            border-radius: 20px;
+            box-shadow: 0 6px 16px rgba(0,0,0,0.08);
         }}
 
-        .big {{
-            font-size: 32px;
+        .stat-title {{
+            color: #666;
+            margin-bottom: 10px;
+        }}
+
+        .stat-number {{
+            font-size: 36px;
             font-weight: bold;
             color: #2563eb;
         }}
 
-        input {{
-            padding: 10px;
-            border-radius: 8px;
+        /* CARDS */
+        .card {{
+            background: white;
+            padding: 25px;
+            border-radius: 20px;
+            box-shadow: 0 6px 16px rgba(0,0,0,0.08);
+            margin-bottom: 25px;
+        }}
+
+        /* FORM */
+        .add-form {{
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }}
+
+        .add-form input {{
+            padding: 12px;
+            border-radius: 10px;
             border: 1px solid #ddd;
         }}
 
-        button {{
-            padding: 10px;
+        .add-form button {{
+            grid-column: span 2;
+            padding: 12px;
             background: #2563eb;
             color: white;
             border: none;
-            border-radius: 10px;
+            border-radius: 12px;
             cursor: pointer;
         }}
 
-        .delete {{
-            background: red;
-        }}
-
+        /* TABLE */
         table {{
             width: 100%;
             border-collapse: collapse;
-            margin-top: 10px;
         }}
 
         th {{
             background: #2563eb;
             color: white;
-            padding: 10px;
+            padding: 12px;
         }}
 
         td {{
-            padding: 10px;
+            padding: 12px;
             border-bottom: 1px solid #eee;
         }}
 
-        .priority {{
-            background: gold;
-            padding: 4px 8px;
-            border-radius: 10px;
-            margin-left: 5px;
+        tr:hover {{
+            background: #f9fbff;
         }}
 
-        .badge {{
-            background: red;
+        /* BADGES */
+        .priority-badge {{
+            background: #facc15;
+            padding: 4px 10px;
+            border-radius: 999px;
+            margin-left: 6px;
+            font-weight: bold;
+        }}
+
+        .counter-badge {{
+            background: #ef4444;
             color: white;
-            padding: 4px 8px;
-            border-radius: 10px;
-            margin-left: 5px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            margin-left: 6px;
         }}
 
+        /* BUTTON */
+        .delete-btn {{
+            background: #dc2626;
+            color: white;
+            border: none;
+            padding: 6px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+        }}
+
+        /* SEARCH */
         .search {{
             width: 100%;
+            padding: 10px;
             margin-bottom: 10px;
+            border-radius: 10px;
+            border: 1px solid #ddd;
         }}
 
         </style>
@@ -245,38 +290,53 @@ def home():
     <div class="container">
 
         <div class="title">📘 Homework Tracker</div>
-        <div class="subtitle">Clean + cute version restored ✨</div>
+        <div class="subtitle">Cute + clean version ✨</div>
 
         <!-- STATS -->
-        <div class="grid">
-            <div class="card">📚<br><div class="big">{total}</div></div>
-            <div class="card">👥<br><div class="big">{unique}</div></div>
-            <div class="card">⭐<br><div class="big">{priority_count}</div></div>
-            <div class="card">🏆<br>{top_student}<br>{top_missing}</div>
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-title">📚 Total Records</div>
+                <div class="stat-number">{total}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-title">👥 Students</div>
+                <div class="stat-number">{unique}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-title">⭐ Priority</div>
+                <div class="stat-number">{priority_count}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-title">🏆 Top Student</div>
+                <div>{top_student}</div>
+                <div>Missing: {top_missing}</div>
+            </div>
         </div>
 
         <!-- ADD -->
         <div class="card">
-            <h3>Add Record</h3>
-            <form action="/add" method="post">
+            <h2>Add Record</h2>
+            <form class="add-form" action="/add" method="post">
                 <input name="level" placeholder="Level" required>
                 <input name="subject" placeholder="Subject" required>
                 <input name="homework" placeholder="Homework" required>
                 <input name="student" placeholder="Student" required>
-                <label><input type="checkbox" name="priority"> Priority</label>
+                <label>
+                    <input type="checkbox" name="priority"> ⭐ Priority
+                </label>
                 <button>Add</button>
             </form>
         </div>
 
         <!-- PRIORITY -->
         <div class="card">
-            <h3>⭐ Priority</h3>
+            <h2>⭐ Priority Students</h2>
             {f"<table>{priority_rows}</table>" if priority_rows else "None 🎉"}
         </div>
 
         <!-- RECORDS -->
         <div class="card">
-            <h3>Records</h3>
+            <h2>Records</h2>
             <input class="search" id="search" placeholder="🔍 Search..." onkeyup="search()">
             {f"<table id='table'>{rows}</table>" if records else "No data"}
         </div>
@@ -289,7 +349,10 @@ def home():
         let rows = document.querySelectorAll("#table tr");
         rows.forEach((row, i) => {{
             if (i === 0) return;
-            row.style.display = row.innerText.toLowerCase().includes(input) ? "" : "none";
+            row.style.display =
+                row.innerText.toLowerCase().includes(input)
+                ? ""
+                : "none";
         }});
     }}
     </script>
@@ -311,6 +374,7 @@ def add(
 ):
     conn = get_connection()
     cursor = conn.cursor()
+
     cursor.execute("""
         INSERT INTO homework (date, level, subject, homework, student, priority)
         VALUES (?, ?, ?, ?, ?, ?)
@@ -322,8 +386,10 @@ def add(
         student.strip(),
         1 if priority else 0
     ))
+
     conn.commit()
     conn.close()
+
     return RedirectResponse("/", status_code=303)
 
 # =========================
