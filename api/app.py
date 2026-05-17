@@ -4,7 +4,6 @@ import sqlite3
 from datetime import datetime
 
 app = FastAPI()
-
 DB_PATH = "/tmp/homework.db"
 
 # =========================
@@ -13,11 +12,9 @@ DB_PATH = "/tmp/homework.db"
 def get_connection():
     return sqlite3.connect(DB_PATH, check_same_thread=False)
 
-
 def init_db():
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS homework (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,10 +26,8 @@ def init_db():
             priority INTEGER DEFAULT 0
         )
     """)
-
     conn.commit()
     conn.close()
-
 
 init_db()
 
@@ -42,13 +37,11 @@ init_db()
 def load_records():
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("""
         SELECT id, date, level, subject, homework, student, priority
         FROM homework
         ORDER BY priority DESC, id DESC
     """)
-
     rows = cursor.fetchall()
     conn.close()
 
@@ -66,31 +59,25 @@ def load_records():
     ]
 
 # =========================
-# STUDENT COUNTS (OPTIMIZED)
+# COUNTS (FAST)
 # =========================
 def get_all_student_counts():
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("""
         SELECT student, COUNT(*)
         FROM homework
         GROUP BY student
     """)
-
     data = dict(cursor.fetchall())
     conn.close()
     return data
 
-# =========================
-# TOP STUDENT
-# =========================
 def get_top_student(counts):
     if not counts:
         return ("None", 0)
-
-    top_student = max(counts, key=counts.get)
-    return (top_student, counts[top_student])
+    top = max(counts, key=counts.get)
+    return (top, counts[top])
 
 # =========================
 # ROUTES
@@ -99,36 +86,30 @@ def get_top_student(counts):
 def favicon():
     return Response(status_code=204)
 
-
 @app.get("/", response_class=HTMLResponse)
 def home():
     records = load_records()
     counts = get_all_student_counts()
 
-    total_records = len(records)
-    unique_students = len(counts)
-    priority_students = len([r for r in records if r["Priority"] == 1])
-
+    total = len(records)
+    unique = len(counts)
+    priority_count = len([r for r in records if r["Priority"] == 1])
     top_student, top_missing = get_top_student(counts)
 
-    # =========================
     # PRIORITY TABLE
-    # =========================
     priority_rows = "".join(
         f"""
         <tr>
             <td>{r['Student']}</td>
             <td>{r['Homework']}</td>
             <td>{r['Subject']}</td>
-            <td><span class='priority-badge'>⭐ PRIORITY</span></td>
+            <td><span class='priority'>⭐ PRIORITY</span></td>
         </tr>
         """
         for r in records if r["Priority"] == 1
     )
 
-    # =========================
-    # RECORDS TABLE
-    # =========================
+    # RECORDS
     rows = "".join(
         f"""
         <tr>
@@ -138,14 +119,14 @@ def home():
             <td>{r['Homework']}</td>
             <td>
                 {r['Student']}
-                {"<span class='priority-badge'>⭐</span>" if r['Priority'] == 1 else ""}
-                <span class='counter-badge'>
+                {"<span class='priority'>⭐</span>" if r['Priority'] else ""}
+                <span class='badge'>
                     Missing: {counts.get(r['Student'], 0)}
                 </span>
             </td>
             <td>
                 <form action="/delete/{r['ID']}" method="post">
-                    <button class="delete-btn" type="submit">🗑 Delete</button>
+                    <button class="delete">🗑</button>
                 </form>
             </td>
         </tr>
@@ -159,7 +140,6 @@ def home():
     <head>
         <title>Homework Tracker</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
-
         <style>
         body {{
             font-family: Arial;
@@ -168,33 +148,63 @@ def home():
         }}
 
         .container {{
-            max-width: 1200px;
+            max-width: 1100px;
             margin: auto;
         }}
 
         .title {{
-            font-size: 42px;
+            font-size: 48px;
             font-weight: bold;
         }}
 
-        .stats {{
+        .subtitle {{
+            color: #666;
+            margin-bottom: 30px;
+        }}
+
+        .grid {{
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(auto-fit, minmax(200px,1fr));
             gap: 20px;
-            margin: 30px 0;
+            margin-bottom: 30px;
         }}
 
         .card {{
             background: white;
             padding: 20px;
-            border-radius: 15px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.08);
-            margin-bottom: 20px;
+            border-radius: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }}
+
+        .big {{
+            font-size: 32px;
+            font-weight: bold;
+            color: #2563eb;
+        }}
+
+        input {{
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }}
+
+        button {{
+            padding: 10px;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+        }}
+
+        .delete {{
+            background: red;
         }}
 
         table {{
             width: 100%;
             border-collapse: collapse;
+            margin-top: 10px;
         }}
 
         th {{
@@ -208,14 +218,14 @@ def home():
             border-bottom: 1px solid #eee;
         }}
 
-        .priority-badge {{
+        .priority {{
             background: gold;
             padding: 4px 8px;
             border-radius: 10px;
             margin-left: 5px;
         }}
 
-        .counter-badge {{
+        .badge {{
             background: red;
             color: white;
             padding: 4px 8px;
@@ -223,25 +233,11 @@ def home():
             margin-left: 5px;
         }}
 
-        .delete-btn {{
-            background: red;
-            color: white;
-            border: none;
-            padding: 5px 10px;
-            border-radius: 5px;
+        .search {{
+            width: 100%;
+            margin-bottom: 10px;
         }}
 
-        input {{
-            padding: 10px;
-            margin: 5px;
-        }}
-
-        button {{
-            padding: 10px;
-            background: blue;
-            color: white;
-            border: none;
-        }}
         </style>
     </head>
 
@@ -249,41 +245,39 @@ def home():
     <div class="container">
 
         <div class="title">📘 Homework Tracker</div>
+        <div class="subtitle">Clean + cute version restored ✨</div>
 
         <!-- STATS -->
-        <div class="stats">
-            <div class="card">📚 Total: {total_records}</div>
-            <div class="card">👥 Students: {unique_students}</div>
-            <div class="card">⭐ Priority: {priority_students}</div>
-            <div class="card">🏆 {top_student} ({top_missing})</div>
+        <div class="grid">
+            <div class="card">📚<br><div class="big">{total}</div></div>
+            <div class="card">👥<br><div class="big">{unique}</div></div>
+            <div class="card">⭐<br><div class="big">{priority_count}</div></div>
+            <div class="card">🏆<br>{top_student}<br>{top_missing}</div>
         </div>
 
         <!-- ADD -->
         <div class="card">
-            <h2>Add Record</h2>
+            <h3>Add Record</h3>
             <form action="/add" method="post">
                 <input name="level" placeholder="Level" required>
                 <input name="subject" placeholder="Subject" required>
                 <input name="homework" placeholder="Homework" required>
                 <input name="student" placeholder="Student" required>
-                <label>
-                    <input type="checkbox" name="priority"> Priority
-                </label>
+                <label><input type="checkbox" name="priority"> Priority</label>
                 <button>Add</button>
             </form>
         </div>
 
         <!-- PRIORITY -->
         <div class="card">
-            <h2>Priority Students</h2>
-            {f"<table>{priority_rows}</table>" if priority_rows else "None"}
+            <h3>⭐ Priority</h3>
+            {f"<table>{priority_rows}</table>" if priority_rows else "None 🎉"}
         </div>
 
         <!-- RECORDS -->
         <div class="card">
-            <h2>Records</h2>
-            <input id="search" placeholder="Search..." onkeyup="search()">
-
+            <h3>Records</h3>
+            <input class="search" id="search" placeholder="🔍 Search..." onkeyup="search()">
             {f"<table id='table'>{rows}</table>" if records else "No data"}
         </div>
 
@@ -293,11 +287,9 @@ def home():
     function search() {{
         let input = document.getElementById("search").value.toLowerCase();
         let rows = document.querySelectorAll("#table tr");
-
         rows.forEach((row, i) => {{
             if (i === 0) return;
-            let text = row.innerText.toLowerCase();
-            row.style.display = text.includes(input) ? "" : "none";
+            row.style.display = row.innerText.toLowerCase().includes(input) ? "" : "none";
         }});
     }}
     </script>
@@ -305,7 +297,6 @@ def home():
     </body>
     </html>
     """
-
 
 # =========================
 # ADD
@@ -320,7 +311,6 @@ def add(
 ):
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("""
         INSERT INTO homework (date, level, subject, homework, student, priority)
         VALUES (?, ?, ?, ?, ?, ?)
@@ -332,12 +322,9 @@ def add(
         student.strip(),
         1 if priority else 0
     ))
-
     conn.commit()
     conn.close()
-
     return RedirectResponse("/", status_code=303)
-
 
 # =========================
 # DELETE
@@ -346,10 +333,7 @@ def add(
 def delete_record(record_id: int):
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("DELETE FROM homework WHERE id = ?", (record_id,))
-
     conn.commit()
     conn.close()
-
     return RedirectResponse("/", status_code=303)
