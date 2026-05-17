@@ -42,7 +42,6 @@ def load_records():
     """)
     rows = cursor.fetchall()
     conn.close()
-
     return [
         {
             "ID": r[0],
@@ -120,12 +119,15 @@ def home():
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Homework Tracker</title>
 
+<!-- 💖 KAWAII FONT -->
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
+
 <style>
 :root {{
-    --bg: #fdf6ff;
+    --bg: #fff0f6;
     --card: #ffffff;
     --text: #2d2d2d;
-    --accent: #a78bfa;
+    --accent: #ff6fa5;
 }}
 
 .dark {{
@@ -135,7 +137,7 @@ def home():
 }}
 
 body {{
-    font-family: 'Segoe UI';
+    font-family: 'Fredoka', sans-serif;
     background: var(--bg);
     color: var(--text);
     padding: 30px;
@@ -148,8 +150,12 @@ body {{
 }}
 
 .title {{
-    font-size: 48px;
-    font-weight: bold;
+    font-size: 52px;
+    font-weight: 600;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }}
 
 .subtitle {{
@@ -159,11 +165,11 @@ body {{
 
 .card {{
     background: var(--card);
-    padding: 20px;
+    padding: 22px;
     border-radius: 20px;
     margin-bottom: 20px;
-    box-shadow: 0 8px 20px rgba(0,0,0,0.08);
-    transition: 0.3s;
+    box-shadow: 0 10px 25px rgba(255,105,180,0.15);
+    transition: 0.2s;
 }}
 
 .card:hover {{
@@ -184,41 +190,48 @@ body {{
 input {{
     padding: 12px;
     border-radius: 12px;
-    border: 2px solid #ddd;
+    border: 2px solid #ffd6e7;
     margin: 5px;
-    transition: 0.2s;
+    font-family: 'Fredoka', sans-serif;
 }}
 
 input:focus {{
     border-color: var(--accent);
     outline: none;
+    box-shadow: 0 0 0 3px rgba(255,111,165,0.2);
 }}
 
 button {{
     padding: 10px 16px;
-    border-radius: 12px;
+    border-radius: 14px;
     border: none;
-    background: var(--accent);
+    background: linear-gradient(135deg, #ff6fa5, #ff9ecb);
     color: white;
+    font-weight: 600;
     cursor: pointer;
+    transition: 0.2s;
+}}
+
+button:hover {{
+    transform: scale(1.05);
 }}
 
 .delete {{
-    background: #ef4444;
+    background: #ff4d6d;
 }}
 
 .badge {{
-    background: #fb7185;
+    background: #ff6b6b;
     color: white;
     padding: 4px 8px;
-    border-radius: 10px;
+    border-radius: 999px;
     margin-left: 6px;
 }}
 
 .priority {{
     background: gold;
     padding: 4px 8px;
-    border-radius: 10px;
+    border-radius: 999px;
     margin-left: 5px;
 }}
 
@@ -236,7 +249,7 @@ tr:hover {{
 }}
 
 .toggle {{
-    float: right;
+    margin-left: auto;
     cursor: pointer;
 }}
 </style>
@@ -246,12 +259,12 @@ tr:hover {{
 <div class="container">
 
 <div class="title">
-<img src="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f4d8.svg" width="40">
- Homework Tracker
+<img src="https://cdn-icons-png.flaticon.com/512/616/616408.png" width="40">
+Homework Tracker
 <span class="toggle" onclick="toggleDark()">🌙</span>
 </div>
 
-<div class="subtitle">Cute + clean tracker ✨</div>
+<div class="subtitle">Super kawaii tracker ✨</div>
 
 <!-- STATS -->
 <div class="grid">
@@ -320,13 +333,10 @@ if(localStorage.getItem("dark")==="true") {{
 
 # ================= ADD =================
 @app.post("/add")
-def add(
-    level: str = Form(...),
-    subject: str = Form(...),
-    homework: str = Form(...),
-    student: str = Form(...),
-    priority: str = Form(None)
-):
+def add(level: str = Form(...), subject: str = Form(...),
+        homework: str = Form(...), student: str = Form(...),
+        priority: str = Form(None)):
+
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -358,14 +368,11 @@ def delete(record_id: int):
 @app.get("/export")
 def export():
     records = load_records()
-
     output = StringIO()
     writer = csv.writer(output)
     writer.writerow(["Date","Level","Subject","Homework","Student","Priority"])
-
     for r in records:
         writer.writerow([r["Date"], r["Level"], r["Subject"], r["Homework"], r["Student"], r["Priority"]])
-
     output.seek(0)
     return StreamingResponse(output, media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=homework.csv"})
