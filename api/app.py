@@ -123,10 +123,10 @@ def home():
 
 <style>
 :root {{
-    --bg: #fff0f6;
+    --bg: #f9fafb;
     --card: #ffffff;
     --text: #2d2d2d;
-    --accent: #ff6fa5;
+    --accent: #2563eb; /* default BLUE */
 }}
 
 .dark {{
@@ -161,7 +161,7 @@ body {{
     padding: 22px;
     border-radius: 20px;
     margin-bottom: 20px;
-    box-shadow: 0 10px 25px rgba(255,105,180,0.15);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.08);
 }}
 
 .grid {{
@@ -178,7 +178,7 @@ body {{
 input {{
     padding: 12px;
     border-radius: 12px;
-    border: 2px solid #ffd6e7;
+    border: 2px solid #ddd;
     margin: 5px;
 }}
 
@@ -191,17 +191,17 @@ button {{
     padding: 10px 16px;
     border-radius: 14px;
     border: none;
-    background: linear-gradient(135deg, #ff6fa5, #ff9ecb);
+    background: var(--accent);
     color: white;
     cursor: pointer;
 }}
 
 .delete {{
-    background: #ff4d6d;
+    background: #ef4444;
 }}
 
 .badge {{
-    background: #ff6b6b;
+    background: #ef4444;
     color: white;
     padding: 4px 8px;
     border-radius: 999px;
@@ -221,10 +221,9 @@ table {{
 }}
 
 th {{
-    background: #ff6fa5;
+    background: var(--accent);
     color: white;
     padding: 10px;
-    border-radius: 6px;
 }}
 
 td {{
@@ -232,13 +231,21 @@ td {{
     border-bottom: 1px solid #eee;
 }}
 
-tr:hover {{
-    background: rgba(0,0,0,0.05);
-}}
-
 .toggle {{
     margin-left: auto;
     cursor: pointer;
+    font-size: 22px;
+}}
+
+#settings {{
+    display:none;
+    position:fixed;
+    top:20px;
+    right:20px;
+    background:white;
+    padding:20px;
+    border-radius:16px;
+    box-shadow:0 10px 30px rgba(0,0,0,0.2);
 }}
 </style>
 </head>
@@ -249,7 +256,30 @@ tr:hover {{
 <div class="title">
 <img src="https://cdn-icons-png.flaticon.com/512/2436/2436636.png" width="45">
 Homework Tracker
-<span class="toggle" onclick="toggleDark()">🌙</span>
+<span class="toggle" onclick="toggleSettings()">⚙️</span>
+</div>
+
+<!-- SETTINGS PANEL -->
+<div id="settings">
+<h3>Settings</h3>
+
+<label>
+<input type="checkbox" onchange="toggleDark()"> Dark Mode
+</label>
+
+<br><br>
+
+<label>Theme:</label><br>
+<select onchange="setTheme(this.value)">
+<option value="#2563eb">Blue</option>
+<option value="#10b981">Green</option>
+<option value="#f59e0b">Orange</option>
+<option value="#8b5cf6">Purple</option>
+<option value="#ef4444">Red</option>
+</select>
+
+<br><br>
+<button onclick="toggleSettings()">Close</button>
 </div>
 
 <!-- STATS -->
@@ -269,40 +299,39 @@ Homework Tracker
 <input name="homework" placeholder="Homework" required>
 <input name="student" placeholder="Student" required>
 <label><input type="checkbox" name="priority"> Priority</label>
-<button>Add ✨</button>
+<button>Add</button>
 </form>
 </div>
 
 <!-- PRIORITY -->
 <div class="card">
 <h3>⭐ Priority Students</h3>
-{f"<table>{priority_rows}</table>" if priority_rows else "None 🎉"}
+{f"<table>{priority_rows}</table>" if priority_rows else "None"}
 </div>
 
 <!-- EXPORT -->
 <div class="card">
-<a href="/export"><button>📥 Export CSV</button></a>
+<a href="/export"><button>Export CSV</button></a>
 </div>
 
 <!-- RECORDS -->
 <div class="card">
 <h3>Records</h3>
-
-<input id="search" placeholder="🔍 Search..." onkeyup="search()">
+<input id="search" placeholder="Search..." onkeyup="search()">
 
 {f'''
 <table id="table">
 <tr>
-    <th>Date</th>
-    <th>Level</th>
-    <th>Subject</th>
-    <th>Homework</th>
-    <th>Student</th>
-    <th>Action</th>
+<th>Date</th>
+<th>Level</th>
+<th>Subject</th>
+<th>Homework</th>
+<th>Student</th>
+<th>Action</th>
 </tr>
 {rows}
 </table>
-''' if records else "No data 💤"}
+''' if records else "No data"}
 
 </div>
 
@@ -318,13 +347,27 @@ function search() {{
     }});
 }}
 
+function toggleSettings() {{
+    let panel = document.getElementById("settings");
+    panel.style.display = panel.style.display === "block" ? "none" : "block";
+}}
+
 function toggleDark() {{
     document.body.classList.toggle("dark");
     localStorage.setItem("dark", document.body.classList.contains("dark"));
 }}
 
+function setTheme(color) {{
+    document.documentElement.style.setProperty('--accent', color);
+    localStorage.setItem("theme", color);
+}}
+
 if(localStorage.getItem("dark")==="true") {{
     document.body.classList.add("dark");
+}}
+
+if(localStorage.getItem("theme")) {{
+    document.documentElement.style.setProperty('--accent', localStorage.getItem("theme"));
 }}
 </script>
 
