@@ -96,7 +96,6 @@ def home():
     priority_count = len([r for r in records if r["Priority"]])
     top_student, top_missing = get_top_student(counts)
 
-    # priority table
     priority_rows = "".join(f"""
     <tr>
         <td>{r['Student']}</td>
@@ -106,7 +105,6 @@ def home():
     </tr>
     """ for r in records if r["Priority"])
 
-    # main table
     rows = "".join(f"""
     <tr>
         <td>{r['Date']}</td>
@@ -158,7 +156,6 @@ body {{
     background: var(--bg);
     color: var(--text);
     padding: 30px;
-    transition: 0.3s;
 }}
 
 .container {{
@@ -212,11 +209,6 @@ input {{
     width: 100%;
 }}
 
-input:focus {{
-    border-color: var(--accent);
-    outline: none;
-}}
-
 button {{
     padding: 10px 16px;
     border-radius: 12px;
@@ -224,10 +216,6 @@ button {{
     background: var(--accent);
     color: white;
     cursor: pointer;
-}}
-
-button:hover {{
-    opacity: 0.9;
 }}
 
 .delete {{
@@ -266,8 +254,11 @@ td {{
     border-bottom: 1px solid #eee;
 }}
 
-tr:hover {{
-    background: rgba(0,0,0,0.05);
+/* RECORD HEADER (NEW) */
+.record-header {{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }}
 
 /* SETTINGS PANEL */
@@ -296,7 +287,6 @@ tr:hover {{
     text-align: center;
     color: white;
 }}
-
 </style>
 </head>
 
@@ -348,14 +338,14 @@ tr:hover {{
 {f"<table>{priority_rows}</table>" if priority_rows else "None 🎉"}
 </div>
 
-<!-- EXPORT -->
+<!-- RECORDS -->
 <div class="card">
+
+<div class="record-header">
+<h3>Records</h3>
 <a href="/export"><button>Export CSV</button></a>
 </div>
 
-<!-- RECORDS -->
-<div class="card">
-<h3>Records</h3>
 <input id="search" placeholder="Search..." onkeyup="search()">
 
 {f'''
@@ -442,11 +432,7 @@ def delete(record_id: int):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(
-        "DELETE FROM homework WHERE id=?",
-        (record_id,)
-    )
-
+    cursor.execute("DELETE FROM homework WHERE id=?", (record_id,))
     conn.commit()
     conn.close()
 
@@ -460,9 +446,7 @@ def export():
     output = StringIO()
     writer = csv.writer(output)
 
-    writer.writerow([
-        "Date","Level","Subject","Homework","Student","Priority"
-    ])
+    writer.writerow(["Date","Level","Subject","Homework","Student","Priority"])
 
     for r in records:
         writer.writerow([
