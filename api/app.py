@@ -74,7 +74,7 @@ def load_records():
 
 
 # =========================
-# COUNT MISSED HOMEWORK
+# COUNT STUDENT RECORDS
 # =========================
 
 def get_student_count(student_name):
@@ -204,11 +204,7 @@ def home():
             }}
 
             body {{
-                background: linear-gradient(
-                    to bottom right,
-                    #eef4ff,
-                    #f9fbff
-                );
+                background: #f4f7fb;
                 color: #222;
                 padding: 40px;
             }}
@@ -219,7 +215,7 @@ def home():
             }}
 
             .title {{
-                font-size: 46px;
+                font-size: 42px;
                 font-weight: bold;
                 margin-bottom: 10px;
             }}
@@ -232,8 +228,8 @@ def home():
             .card {{
                 background: white;
                 padding: 25px;
-                border-radius: 20px;
-                box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+                border-radius: 18px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.08);
                 margin-bottom: 30px;
             }}
 
@@ -248,9 +244,9 @@ def home():
             }}
 
             input {{
-                padding: 13px;
+                padding: 12px;
                 border: 1px solid #ddd;
-                border-radius: 12px;
+                border-radius: 10px;
                 font-size: 15px;
             }}
 
@@ -274,7 +270,6 @@ def home():
 
             button:hover {{
                 background: #1d4ed8;
-                transform: translateY(-2px);
             }}
 
             .delete-btn {{
@@ -307,12 +302,8 @@ def home():
                 border-bottom: 1px solid #eee;
             }}
 
-            tr {{
-                transition: 0.2s;
-            }}
-
             tr:hover {{
-                background: #f3f7ff;
+                background: #f9fbff;
             }}
 
             .empty {{
@@ -376,7 +367,7 @@ def home():
                 }}
 
                 .title {{
-                    font-size: 34px;
+                    font-size: 32px;
                 }}
 
                 table {{
@@ -399,10 +390,10 @@ def home():
             </div>
 
             <div class="subtitle">
-                Track homework like a classroom command center 🚀
+                Manage student homework submissions easily
             </div>
 
-            <!-- PRIORITY -->
+            <!-- PRIORITY STUDENTS -->
 
             <div class="card">
 
@@ -430,7 +421,7 @@ def home():
 
             </div>
 
-            <!-- ADD FORM -->
+            <!-- ADD RECORD -->
 
             <div class="card">
 
@@ -587,7 +578,7 @@ def add(
 
     is_priority = 1 if priority else 0
 
-    # Prevent duplicates 🛡️
+    # Prevent duplicates
 
     cursor.execute("""
         SELECT *
@@ -653,4 +644,3 @@ def delete_record(record_id: int):
     conn.close()
 
     return RedirectResponse("/", status_code=303)
-``` ✨
