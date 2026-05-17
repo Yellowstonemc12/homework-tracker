@@ -119,7 +119,6 @@ def home():
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Homework Tracker</title>
 
-<!-- 💖 KAWAII FONT -->
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
 
 <style>
@@ -141,7 +140,6 @@ body {{
     background: var(--bg);
     color: var(--text);
     padding: 30px;
-    transition: 0.3s;
 }}
 
 .container {{
@@ -158,22 +156,12 @@ body {{
     gap: 10px;
 }}
 
-.subtitle {{
-    color: #888;
-    margin-bottom: 20px;
-}}
-
 .card {{
     background: var(--card);
     padding: 22px;
     border-radius: 20px;
     margin-bottom: 20px;
     box-shadow: 0 10px 25px rgba(255,105,180,0.15);
-    transition: 0.2s;
-}}
-
-.card:hover {{
-    transform: translateY(-4px);
 }}
 
 .grid {{
@@ -192,13 +180,11 @@ input {{
     border-radius: 12px;
     border: 2px solid #ffd6e7;
     margin: 5px;
-    font-family: 'Fredoka', sans-serif;
 }}
 
 input:focus {{
     border-color: var(--accent);
     outline: none;
-    box-shadow: 0 0 0 3px rgba(255,111,165,0.2);
 }}
 
 button {{
@@ -207,13 +193,7 @@ button {{
     border: none;
     background: linear-gradient(135deg, #ff6fa5, #ff9ecb);
     color: white;
-    font-weight: 600;
     cursor: pointer;
-    transition: 0.2s;
-}}
-
-button:hover {{
-    transform: scale(1.05);
 }}
 
 .delete {{
@@ -240,8 +220,16 @@ table {{
     border-collapse: collapse;
 }}
 
-td, th {{
+th {{
+    background: #ff6fa5;
+    color: white;
     padding: 10px;
+    border-radius: 6px;
+}}
+
+td {{
+    padding: 10px;
+    border-bottom: 1px solid #eee;
 }}
 
 tr:hover {{
@@ -259,12 +247,10 @@ tr:hover {{
 <div class="container">
 
 <div class="title">
-<img src="https://cdn-icons-png.flaticon.com/512/616/616408.png" width="40">
+<img src="https://cdn-icons-png.flaticon.com/512/2436/2436636.png" width="45">
 Homework Tracker
 <span class="toggle" onclick="toggleDark()">🌙</span>
 </div>
-
-<div class="subtitle">Super kawaii tracker ✨</div>
 
 <!-- STATS -->
 <div class="grid">
@@ -301,8 +287,23 @@ Homework Tracker
 <!-- RECORDS -->
 <div class="card">
 <h3>Records</h3>
+
 <input id="search" placeholder="🔍 Search..." onkeyup="search()">
-{f"<table id='table'>{rows}</table>" if records else "No data 💤"}
+
+{f'''
+<table id="table">
+<tr>
+    <th>Date</th>
+    <th>Level</th>
+    <th>Subject</th>
+    <th>Homework</th>
+    <th>Student</th>
+    <th>Action</th>
+</tr>
+{rows}
+</table>
+''' if records else "No data 💤"}
+
 </div>
 
 </div>
