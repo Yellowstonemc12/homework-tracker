@@ -308,13 +308,55 @@ Homework Tracker
 </div>
 
 <div class="card">
-<h3>Records</h3>
-<table>
-<tr>
-<th>Date</th><th>Level</th><th>Subject</th><th>Homework</th><th>Student</th><th>Action</th>
-</tr>
-{rows}
-</table>
+
+    <!-- HEADER BAR -->
+    <div style="
+        background:#6366f1;
+        color:white;
+        padding:14px 18px;
+        border-radius:16px;
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        margin-bottom:15px;
+    ">
+        <h3 style="margin:0;">📋 Records</h3>
+
+        <a href="/export">
+            <button style="
+                background:white;
+                color:#6366f1;
+                font-weight:bold;
+            ">
+                Export CSV
+            </button>
+        </a>
+    </div>
+
+    <!-- TABLE CONTAINER -->
+    <div style="
+        background:#f9fafb;
+        border-radius:16px;
+        padding:10px;
+        overflow-x:auto;
+    ">
+
+        <table style="margin-top:0;">
+            <tr>
+                <th>Date</th>
+                <th>Level</th>
+                <th>Subject</th>
+                <th>Homework</th>
+                <th>Student</th>
+                <th>Action</th>
+            </tr>
+
+            {rows}
+
+        </table>
+
+    </div>
+
 </div>
 
 </div>
