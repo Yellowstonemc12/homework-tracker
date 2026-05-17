@@ -1,14 +1,9 @@
 from fastapi import FastAPI, Form
-from fastapi.responses import (
-    HTMLResponse,
-    RedirectResponse,
-    Response,
-    FileResponse
-)
-
+from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
 import sqlite3
 from datetime import datetime
 import csv
+import io
 
 app = FastAPI()
 
@@ -28,6 +23,7 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
 
+    # Homework table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS homework (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,8 +32,15 @@ def init_db():
             subject TEXT,
             homework TEXT,
             student TEXT,
-            priority INTEGER DEFAULT 0,
-            submitted INTEGER DEFAULT 0
+            priority INTEGER DEFAULT 0
+        )
+    """)
+
+    # Permanent missing counter
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS student_stats (
+            student TEXT PRIMARY KEY,
+            missing_count INTEGER DEFAULT 0
         )
     """)
 
@@ -52,24 +55,27 @@ init_db()
 # LOAD RECORDS
 # =========================
 
-def load_records():
+def load_records(search=""):
 
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
-        SELECT
-            id,
-            date,
-            level,
-            subject,
-            homework,
-            student,
-            priority,
-            submitted
-        FROM homework
-        ORDER BY priority DESC, id DESC
-    """)
+    if search:
+
+        cursor.execute("""
+            SELECT id, date, level, subject, homework, student, priority
+            FROM homework
+            WHERE student LIKE ?
+            ORDER BY priority DESC, id DESC
+        """, (f"%{search}%",))
+
+    else:
+
+        cursor.execute("""
+            SELECT id, date, level, subject, homework, student, priority
+            FROM homework
+            ORDER BY priority DESC, id DESC
+        """)
 
     rows = cursor.fetchall()
 
@@ -84,14 +90,13 @@ def load_records():
             "Homework": r[4],
             "Student": r[5],
             "Priority": r[6],
-            "Submitted": r[7],
         }
         for r in rows
     ]
 
 
 # =========================
-# STUDENT MISSING COUNT
+# PERMANENT COUNTER
 # =========================
 
 def get_student_count(student_name):
@@ -100,32 +105,34 @@ def get_student_count(student_name):
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT COUNT(*)
-        FROM homework
+        SELECT missing_count
+        FROM student_stats
         WHERE student = ?
     """, (student_name,))
 
-    count = cursor.fetchone()[0]
+    row = cursor.fetchone()
 
     conn.close()
 
-    return count
+    if row:
+        return row[0]
+
+    return 0
 
 
 # =========================
 # LEADERBOARD
 # =========================
 
-def get_top_students():
+def get_leaderboard():
 
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT student, COUNT(*)
-        FROM homework
-        GROUP BY student
-        ORDER BY COUNT(*) DESC
+        SELECT student, missing_count
+        FROM student_stats
+        ORDER BY missing_count DESC
         LIMIT 5
     """)
 
@@ -137,7 +144,7 @@ def get_top_students():
 
 
 # =========================
-# ROUTES
+# FAVICON
 # =========================
 
 @app.get("/favicon.ico")
@@ -146,23 +153,15 @@ def favicon():
 
 
 # =========================
-# HOME PAGE
+# HOME
 # =========================
 
 @app.get("/", response_class=HTMLResponse)
-def home():
+def home(search: str = ""):
 
-    records = load_records()
+    records = load_records(search)
 
-    leaderboard = get_top_students()
-
-    total_priority = len(
-        [r for r in records if r["Priority"] == 1]
-    )
-
-    total_students = len(
-        set(r["Student"] for r in records)
-    )
+    leaderboard = get_leaderboard()
 
     # =========================
     # PRIORITY TABLE
@@ -174,7 +173,6 @@ def home():
             <td>{r['Student']}</td>
             <td>{r['Homework']}</td>
             <td>{r['Subject']}</td>
-
             <td>
                 <span class='priority-badge'>
                     ⭐ PRIORITY
@@ -187,13 +185,13 @@ def home():
     )
 
     # =========================
-    # LEADERBOARD
+    # LEADERBOARD TABLE
     # =========================
 
     leaderboard_rows = "".join(
         f"""
         <tr>
-            <td>{student}</td>
+            <td>🏅 {student}</td>
             <td>{count}</td>
         </tr>
         """
@@ -201,7 +199,7 @@ def home():
     )
 
     # =========================
-    # MAIN TABLE
+    # RECORDS TABLE
     # =========================
 
     rows = "".join(
@@ -228,16 +226,6 @@ def home():
                 <span class='counter-badge'>
                     Missing: {get_student_count(r['Student'])}
                 </span>
-
-            </td>
-
-            <td>
-
-                {
-                    "<span class='submitted-badge'>✅ Submitted</span>"
-                    if r['Submitted'] == 1
-                    else "<span class='missing-badge'>❌ Missing</span>"
-                }
 
             </td>
 
@@ -283,17 +271,6 @@ def home():
                 background: #f4f7fb;
                 color: #222;
                 padding: 40px;
-                transition: 0.3s;
-            }}
-
-            .dark-mode {{
-                background: #111827;
-                color: white;
-            }}
-
-            .dark-mode .card {{
-                background: #1f2937;
-                color: white;
             }}
 
             .container {{
@@ -324,13 +301,6 @@ def home():
                 margin-bottom: 20px;
             }}
 
-            .stats-grid {{
-                display: grid;
-                grid-template-columns: repeat(3, 1fr);
-                gap: 20px;
-                margin-bottom: 30px;
-            }}
-
             .add-form {{
                 display: grid;
                 grid-template-columns: 1fr 1fr;
@@ -345,6 +315,7 @@ def home():
             }}
 
             button {{
+                grid-column: span 2;
                 padding: 14px;
                 border: none;
                 border-radius: 12px;
@@ -365,10 +336,22 @@ def home():
                 padding: 8px 12px;
                 border-radius: 8px;
                 font-size: 14px;
+                border: none;
+                color: white;
+                cursor: pointer;
             }}
 
             .delete-btn:hover {{
                 background: #b91c1c;
+            }}
+
+            .export-btn {{
+                background: #059669;
+                margin-top: 15px;
+            }}
+
+            .export-btn:hover {{
+                background: #047857;
             }}
 
             table {{
@@ -392,6 +375,12 @@ def home():
 
             tr:hover {{
                 background: #f9fbff;
+            }}
+
+            .empty {{
+                text-align: center;
+                color: #777;
+                padding: 30px;
             }}
 
             .badge {{
@@ -434,28 +423,13 @@ def home():
                 margin-left: 8px;
             }}
 
-            .submitted-badge {{
-                background: #22c55e;
-                color: white;
-                padding: 5px 10px;
-                border-radius: 999px;
-                font-size: 12px;
-                font-weight: bold;
-            }}
-
-            .missing-badge {{
-                background: #ef4444;
-                color: white;
-                padding: 5px 10px;
-                border-radius: 999px;
-                font-size: 12px;
-                font-weight: bold;
-            }}
-
-            .top-buttons {{
-                display: flex;
-                gap: 15px;
+            .search-box {{
+                width: 100%;
                 margin-bottom: 20px;
+            }}
+
+            .leaderboard-table td {{
+                font-weight: bold;
             }}
 
             @media (max-width: 700px) {{
@@ -468,8 +442,8 @@ def home():
                     grid-template-columns: 1fr;
                 }}
 
-                .stats-grid {{
-                    grid-template-columns: 1fr;
+                button {{
+                    grid-column: span 1;
                 }}
 
                 .title {{
@@ -497,101 +471,6 @@ def home():
 
             <div class="subtitle">
                 Manage student homework submissions easily
-            </div>
-
-            <div class="top-buttons">
-
-                <button onclick="toggleDarkMode()">
-                    🌙 Dark Mode
-                </button>
-
-                <a href="/export">
-                    <button>
-                        📥 Export CSV
-                    </button>
-                </a>
-
-            </div>
-
-            <!-- SEARCH -->
-
-            <div class="card">
-
-                <input
-                    type="text"
-                    id="searchInput"
-                    placeholder="🔍 Search student..."
-                    onkeyup="searchTable()"
-                >
-
-            </div>
-
-            <!-- STATS -->
-
-            <div class="stats-grid">
-
-                <div class="card">
-                    <h3>Total Records</h3>
-                    <p>{len(records)}</p>
-                </div>
-
-                <div class="card">
-                    <h3>Priority Students</h3>
-                    <p>{total_priority}</p>
-                </div>
-
-                <div class="card">
-                    <h3>Total Students</h3>
-                    <p>{total_students}</p>
-                </div>
-
-            </div>
-
-            <!-- LEADERBOARD -->
-
-            <div class="card">
-
-                <h2>🏆 Top Missing Homework Students</h2>
-
-                <table>
-
-                    <tr>
-                        <th>Student</th>
-                        <th>Missing Count</th>
-                    </tr>
-
-                    {leaderboard_rows}
-
-                </table>
-
-            </div>
-
-            <!-- PRIORITY -->
-
-            <div class="card">
-
-                <h2>⭐ Priority Students</h2>
-
-                {
-                    f'''
-                    <table>
-
-                        <tr>
-                            <th>Student</th>
-                            <th>Homework</th>
-                            <th>Subject</th>
-                            <th>Status</th>
-                        </tr>
-
-                        {priority_rows}
-
-                    </table>
-                    '''
-                    if priority_rows
-                    else
-                    '<div>No priority students 🎉</div>'
-                }
-
             </div>
 
             <!-- ADD RECORD -->
@@ -642,19 +521,65 @@ def home():
 
                     </label>
 
-                    <label class="priority-label">
-
-                        <input type="checkbox" name="submitted">
-
-                        ✅ Submitted
-
-                    </label>
-
                     <button type="submit">
                         Add Record
                     </button>
 
                 </form>
+
+            </div>
+
+            <!-- PRIORITY SECTION -->
+
+            <div class="card">
+
+                <h2>⭐ Priority Students</h2>
+
+                {
+                    f'''
+                    <table>
+
+                        <tr>
+                            <th>Student</th>
+                            <th>Homework</th>
+                            <th>Subject</th>
+                            <th>Status</th>
+                        </tr>
+
+                        {priority_rows}
+
+                    </table>
+                    '''
+                    if priority_rows
+                    else
+                    '<div class="empty">No priority students 🎉</div>'
+                }
+
+            </div>
+
+            <!-- LEADERBOARD -->
+
+            <div class="card">
+
+                <h2>🏆 Top Missing Homework Students</h2>
+
+                {
+                    f'''
+                    <table class="leaderboard-table">
+
+                        <tr>
+                            <th>Student</th>
+                            <th>Total Missing</th>
+                        </tr>
+
+                        {leaderboard_rows}
+
+                    </table>
+                    '''
+                    if leaderboard_rows
+                    else
+                    '<div class="empty">No leaderboard data yet 🌱</div>'
+                }
 
             </div>
 
@@ -664,67 +589,53 @@ def home():
 
                 <h2>📋 Records</h2>
 
-                <table id="recordsTable">
+                <!-- SEARCH -->
 
-                    <tr>
-                        <th>Date</th>
-                        <th>Level</th>
-                        <th>Subject</th>
-                        <th>Homework</th>
-                        <th>Student</th>
-                        <th>Status</th>
-                        <th>Action</th>
-                    </tr>
+                <form method="get">
 
-                    {rows}
+                    <input
+                        class="search-box"
+                        type="text"
+                        name="search"
+                        placeholder="🔍 Search Student"
+                        value="{search}"
+                    >
 
-                </table>
+                </form>
+
+                {
+                    f'''
+                    <table>
+
+                        <tr>
+                            <th>Date</th>
+                            <th>Level</th>
+                            <th>Subject</th>
+                            <th>Homework</th>
+                            <th>Student</th>
+                            <th>Action</th>
+                        </tr>
+
+                        {rows}
+
+                    </table>
+                    '''
+                    if records
+                    else
+                    '<div class="empty">No records yet 🌱</div>'
+                }
+
+                <form action="/export" method="get">
+
+                    <button class="export-btn" type="submit">
+                        📥 Export CSV
+                    </button>
+
+                </form>
 
             </div>
 
         </div>
-
-        <script>
-
-            function toggleDarkMode() {{
-
-                document.body.classList.toggle("dark-mode");
-
-            }}
-
-            function searchTable() {{
-
-                let input =
-                    document.getElementById("searchInput");
-
-                let filter =
-                    input.value.toLowerCase();
-
-                let table =
-                    document.getElementById("recordsTable");
-
-                let tr =
-                    table.getElementsByTagName("tr");
-
-                for (let i = 1; i < tr.length; i++) {{
-
-                    let td =
-                        tr[i].getElementsByTagName("td")[4];
-
-                    if (td) {{
-
-                        let txtValue =
-                            td.textContent || td.innerText;
-
-                        tr[i].style.display =
-                            txtValue.toLowerCase().includes(filter)
-                            ? ""
-                            : "none";
-                    }}
-                }}
-            }}
-
-        </script>
 
     </body>
 
@@ -743,8 +654,7 @@ def add(
     subject: str = Form(...),
     homework: str = Form(...),
     student: str = Form(...),
-    priority: str = Form(None),
-    submitted: str = Form(None)
+    priority: str = Form(None)
 
 ):
 
@@ -752,10 +662,8 @@ def add(
     cursor = conn.cursor()
 
     is_priority = 1 if priority else 0
-    is_submitted = 1 if submitted else 0
 
-    # SMART DUPLICATE DETECTION
-
+    # Smart duplicate detection 🧠
     cursor.execute("""
         SELECT *
         FROM homework
@@ -764,19 +672,18 @@ def add(
             AND subject = ?
             AND homework = ?
             AND student = ?
-            AND date = ?
     """, (
         level.strip(),
         subject.strip(),
         homework.strip(),
-        student.strip(),
-        datetime.now().strftime("%Y-%m-%d")
+        student.strip()
     ))
 
     existing = cursor.fetchone()
 
     if not existing:
 
+        # Add homework record
         cursor.execute("""
             INSERT INTO homework (
                 date,
@@ -784,70 +691,36 @@ def add(
                 subject,
                 homework,
                 student,
-                priority,
-                submitted
+                priority
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?)
         """, (
             datetime.now().strftime("%Y-%m-%d"),
             level.strip(),
             subject.strip(),
             homework.strip(),
             student.strip(),
-            is_priority,
-            is_submitted
+            is_priority
         ))
+
+        # Permanent counter update
+        cursor.execute("""
+            INSERT INTO student_stats (
+                student,
+                missing_count
+            )
+            VALUES (?, 1)
+
+            ON CONFLICT(student)
+            DO UPDATE SET
+            missing_count = missing_count + 1
+        """, (student.strip(),))
 
         conn.commit()
 
     conn.close()
 
     return RedirectResponse("/", status_code=303)
-
-
-# =========================
-# EXPORT CSV
-# =========================
-
-@app.get("/export")
-def export_csv():
-
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT *
-        FROM homework
-    """)
-
-    rows = cursor.fetchall()
-
-    conn.close()
-
-    file_path = "/tmp/homework_export.csv"
-
-    with open(file_path, "w", newline="") as csvfile:
-
-        writer = csv.writer(csvfile)
-
-        writer.writerow([
-            "ID",
-            "Date",
-            "Level",
-            "Subject",
-            "Homework",
-            "Student",
-            "Priority",
-            "Submitted"
-        ])
-
-        writer.writerows(rows)
-
-    return FileResponse(
-        file_path,
-        media_type="text/csv",
-        filename="homework_export.csv"
-    )
 
 
 # =========================
@@ -869,3 +742,51 @@ def delete_record(record_id: int):
     conn.close()
 
     return RedirectResponse("/", status_code=303)
+
+
+# =========================
+# EXPORT CSV
+# =========================
+
+@app.get("/export")
+def export_csv():
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT date, level, subject, homework, student, priority
+        FROM homework
+        ORDER BY id DESC
+    """)
+
+    rows = cursor.fetchall()
+
+    conn.close()
+
+    output = io.StringIO()
+
+    writer = csv.writer(output)
+
+    writer.writerow([
+        "Date",
+        "Level",
+        "Subject",
+        "Homework",
+        "Student",
+        "Priority"
+    ])
+
+    for row in rows:
+        writer.writerow(row)
+
+    output.seek(0)
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition":
+            "attachment; filename=homework_records.csv"
+        }
+    )
