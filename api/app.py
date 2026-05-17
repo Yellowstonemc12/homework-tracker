@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Form
+from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
 import sqlite3
 from datetime import datetime
@@ -8,18 +8,28 @@ from io import StringIO
 app = FastAPI()
 DB_PATH = "/tmp/homework.db"
 
-
+# ================= DATABASE =================
 def get_connection():
     return sqlite3.connect(DB_PATH, check_same_thread=False)
-
 
 def init_db():
     conn = get_connection()
     cursor = conn.cursor()
 
+    # USERS
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE,
+            password TEXT
+        )
+    """)
+
+    # HOMEWORK
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS homework (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
             date TEXT,
             level TEXT,
             subject TEXT,
@@ -32,20 +42,18 @@ def init_db():
     conn.commit()
     conn.close()
 
-
 init_db()
 
-
-def load_records():
+# ================= DATA =================
+def load_records(user_id):
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("""
         SELECT id, date, level, subject, homework, student, priority
         FROM homework
+        WHERE user_id=?
         ORDER BY priority DESC, id DESC
-    """)
-
+    """, (user_id,))
     rows = cursor.fetchall()
     conn.close()
 
@@ -62,90 +70,133 @@ def load_records():
         for r in rows
     ]
 
-
-def get_counts():
+def get_counts(user_id):
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("""
         SELECT student, COUNT(*)
         FROM homework
+        WHERE user_id=?
         GROUP BY student
-    """)
-
+    """, (user_id,))
     data = dict(cursor.fetchall())
     conn.close()
-
     return data
-
 
 def get_top_student(counts):
     if not counts:
         return ("None", 0)
-
     top = max(counts, key=counts.get)
-
     return (top, counts[top])
 
+# ================= AUTH =================
+@app.get("/login", response_class=HTMLResponse)
+def login_page():
+    return """
+    <h2>Login</h2>
+    <form method="post">
+        <input name="username" placeholder="Username"><br>
+        <input name="password" type="password" placeholder="Password"><br>
+        <button>Login</button>
+    </form>
+    <a href="/signup">Sign up</a>
+    """
 
-@app.get("/favicon.ico")
-def favicon():
-    return Response(status_code=204)
+@app.post("/login")
+def login(username: str = Form(...), password: str = Form(...)):
+    conn = get_connection()
+    cursor = conn.cursor()
 
+    cursor.execute(
+        "SELECT id FROM users WHERE username=? AND password=?",
+        (username, password)
+    )
 
+    user = cursor.fetchone()
+    conn.close()
+
+    if user:
+        response = RedirectResponse("/", status_code=303)
+        response.set_cookie("user_id", str(user[0]))
+        return response
+
+    return RedirectResponse("/login", status_code=303)
+
+@app.get("/signup", response_class=HTMLResponse)
+def signup_page():
+    return """
+    <h2>Sign Up</h2>
+    <form method="post">
+        <input name="username"><br>
+        <input name="password" type="password"><br>
+        <button>Create</button>
+    </form>
+    """
+
+@app.post("/signup")
+def signup(username: str = Form(...), password: str = Form(...)):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "INSERT INTO users (username, password) VALUES (?, ?)",
+        (username, password)
+    )
+
+    conn.commit()
+    conn.close()
+
+    return RedirectResponse("/login", status_code=303)
+
+# ================= MAIN PAGE =================
 @app.get("/", response_class=HTMLResponse)
-def home():
-    records = load_records()
-    counts = get_counts()
+def home(request: Request):
+
+    user_id = request.cookies.get("user_id")
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    records = load_records(user_id)
+    counts = get_counts(user_id)
 
     total = len(records)
     unique = len(counts)
     priority_count = len([r for r in records if r["Priority"]])
     top_student, top_missing = get_top_student(counts)
 
-    priority_rows = "".join(
-        f"""
-        <tr>
-            <td>{r['Student']}</td>
-            <td>{r['Homework']}</td>
-            <td>{r['Subject']}</td>
-            <td><span class="priority">★</span></td>
-        </tr>
-        """
-        for r in records if r["Priority"]
-    )
+    priority_rows = "".join(f"""
+    <tr>
+        <td>{r['Student']}</td>
+        <td>{r['Homework']}</td>
+        <td>{r['Subject']}</td>
+        <td><span class="priority">★</span></td>
+    </tr>
+    """ for r in records if r["Priority"])
 
-    rows = "".join(
-        f"""
-        <tr>
-            <td>{r['Date']}</td>
-            <td>{r['Level']}</td>
-            <td>{r['Subject']}</td>
-            <td>{r['Homework']}</td>
-            <td>
-                {r['Student']}
-                {"<span class='priority'>★</span>" if r['Priority'] else ""}
-                <span class="badge">{counts.get(r['Student'], 0)}</span>
-            </td>
-            <td>
-                <form action="/delete/{r['ID']}" method="post">
-                    <button class="delete" type="submit">✕</button>
-                </form>
-            </td>
-        </tr>
-        """
-        for r in records
-    )
+    rows = "".join(f"""
+    <tr>
+        <td>{r['Date']}</td>
+        <td>{r['Level']}</td>
+        <td>{r['Subject']}</td>
+        <td>{r['Homework']}</td>
+        <td>
+            {r['Student']}
+            {"<span class='priority'>★</span>" if r['Priority'] else ""}
+            <span class="badge">{counts.get(r['Student'],0)}</span>
+        </td>
+        <td>
+            <form action="/delete/{r['ID']}" method="post">
+                <button class="delete">✕</button>
+            </form>
+        </td>
+    </tr>
+    """ for r in records)
 
     return f"""
 <!DOCTYPE html>
 <html>
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Homework Tracker</title>
-
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
-
 <style>
 * {{
     font-family: 'Fredoka', sans-serif;
@@ -169,8 +220,6 @@ body {{
     background: var(--bg);
     color: var(--text);
     padding: 30px;
-    transition: 0.3s;
-    overflow-x: hidden;
 }}
 
 .container {{
@@ -179,30 +228,21 @@ body {{
 }}
 
 .title {{
-    font-size: 48px;
+    font-size: 42px;
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 25px;
 }}
 
 .settings-btn {{
     margin-left: auto;
     cursor: pointer;
-    font-size: 22px;
 }}
 
 .card {{
     background: var(--card);
-    padding: 22px;
-    border-radius: 20px;
+    padding: 20px;
+    border-radius: 18px;
     margin-bottom: 20px;
-    box-shadow: 0 8px 20px rgba(0,0,0,0.08);
-    transition: 0.2s;
-}}
-
-.card:hover {{
-    transform: translateY(-3px);
 }}
 
 .grid {{
@@ -212,129 +252,55 @@ body {{
 }}
 
 .big {{
-    font-size: 30px;
+    font-size: 28px;
     color: var(--accent);
 }}
 
-input[type="text"],
-input:not([type]) {{
-    padding: 12px;
-    border-radius: 12px;
+input {{
+    padding: 10px;
+    border-radius: 10px;
     border: 2px solid #ddd;
-    margin: 6px 0;
     width: 100%;
 }}
 
-input:focus {{
-    border-color: var(--accent);
-    outline: none;
-}}
-
-input[type="checkbox"] {{
-    width: auto;
-    margin-right: 8px;
-}}
-
-.checkbox-label {{
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin: 8px 0;
-}}
-
 button {{
-    padding: 10px 16px;
-    border-radius: 12px;
-    border: none;
+    padding: 10px;
+    border-radius: 10px;
     background: var(--accent);
     color: white;
-    cursor: pointer;
-    transition: 0.2s;
-}}
-
-button:hover {{
-    opacity: 0.9;
+    border: none;
 }}
 
 .delete {{
-    background: #ef4444;
+    background: red;
 }}
 
 .badge {{
-    background: #ef4444;
+    background: red;
     color: white;
     padding: 4px 8px;
     border-radius: 999px;
-    margin-left: 6px;
 }}
 
 .priority {{
     background: gold;
     padding: 4px 8px;
     border-radius: 999px;
-    margin-left: 5px;
-}}
-
-table {{
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 10px;
-}}
-
-th {{
-    background: var(--accent);
-    color: white;
-    padding: 10px;
-}}
-
-td {{
-    padding: 10px;
-    border-bottom: 1px solid #eee;
-}}
-
-tr:hover {{
-    background: rgba(0,0,0,0.05);
 }}
 
 #settingsPanel {{
     position: fixed;
     top: 0;
-    right: -340px;
-    width: 300px;
+    right: -300px;
+    width: 260px;
     height: 100%;
     background: var(--card);
-    box-shadow: -5px 0 20px rgba(0,0,0,0.15);
-    padding: 24px;
+    padding: 20px;
     transition: 0.3s;
-    z-index: 9999;
 }}
 
 #settingsPanel.open {{
     right: 0;
-}}
-
-.setting-item {{
-    margin: 15px 0;
-}}
-
-.color-option {{
-    display: block;
-    padding: 10px;
-    border-radius: 10px;
-    margin-top: 8px;
-    cursor: pointer;
-    text-align: center;
-    color: white;
-}}
-
-@media (max-width: 700px) {{
-    body {{
-        padding: 18px;
-    }}
-
-    .title {{
-        font-size: 34px;
-    }}
 }}
 </style>
 </head>
@@ -342,19 +308,12 @@ tr:hover {{
 <body>
 
 <div id="settingsPanel">
-    <h3>⚙ Settings</h3>
-
-    <div class="setting-item">
-        <button onclick="toggleDark()">🌙 Dark Mode</button>
-    </div>
-
-    <div class="setting-item">
-        <p>Theme</p>
-        <div class="color-option" style="background:#4f46e5" onclick="setColor('#4f46e5')">Blue</div>
-        <div class="color-option" style="background:#16a34a" onclick="setColor('#16a34a')">Green</div>
-        <div class="color-option" style="background:#dc2626" onclick="setColor('#dc2626')">Red</div>
-        <div class="color-option" style="background:#f59e0b" onclick="setColor('#f59e0b')">Orange</div>
-    </div>
+<h3>⚙ Settings</h3>
+<button onclick="toggleDark()">Dark Mode</button>
+<br><br>
+<div onclick="setColor('#4f46e5')">Blue</div>
+<div onclick="setColor('#16a34a')">Green</div>
+<div onclick="setColor('#dc2626')">Red</div>
 </div>
 
 <div class="container">
@@ -365,95 +324,52 @@ tr:hover {{
 </div>
 
 <div class="grid">
-    <div class="card">📊<div class="big">{total}</div></div>
-    <div class="card">👥<div class="big">{unique}</div></div>
-    <div class="card">⭐<div class="big">{priority_count}</div></div>
-    <div class="card">🏆 {top_student}<br>{top_missing}</div>
+<div class="card">Total<div class="big">{total}</div></div>
+<div class="card">Students<div class="big">{unique}</div></div>
+<div class="card">Priority<div class="big">{priority_count}</div></div>
+<div class="card">{top_student}<br>{top_missing}</div>
 </div>
 
 <div class="card">
-    <h3>Add Record</h3>
-
-    <form action="/add" method="post">
-        <input name="level" placeholder="Level" required>
-        <input name="subject" placeholder="Subject" required>
-        <input name="homework" placeholder="Homework" required>
-        <input name="student" placeholder="Student" required>
-
-        <label class="checkbox-label">
-            <input type="checkbox" name="priority">
-            Priority
-        </label>
-
-        <br>
-        <button type="submit">Add</button>
-    </form>
+<form action="/add" method="post">
+<input name="level" placeholder="Level">
+<input name="subject" placeholder="Subject">
+<input name="homework" placeholder="Homework">
+<input name="student" placeholder="Student">
+<label><input type="checkbox" name="priority"> Priority</label>
+<button>Add</button>
+</form>
 </div>
 
 <div class="card">
-    <h3>Priority Students</h3>
-    {f"<table>{priority_rows}</table>" if priority_rows else "None 🎉"}
-</div>
-
-<div class="card">
-    <a href="/export">
-        <button>Export CSV</button>
-    </a>
-</div>
-
-<div class="card">
-    <h3>Records</h3>
-
-    <input id="search" placeholder="Search..." onkeyup="search()">
-
-    {f'''
-    <table id="table">
-        <tr>
-            <th>Date</th>
-            <th>Level</th>
-            <th>Subject</th>
-            <th>Homework</th>
-            <th>Student</th>
-            <th>Action</th>
-        </tr>
-        {rows}
-    </table>
-    ''' if records else "No data"}
+<h3>Records</h3>
+<input id="search" onkeyup="search()" placeholder="Search">
+<table>
+<tr>
+<th>Date</th><th>Level</th><th>Subject</th><th>Homework</th><th>Student</th><th>Action</th>
+</tr>
+{rows}
+</table>
 </div>
 
 </div>
 
 <script>
-function search() {{
-    let input = document.getElementById("search").value.toLowerCase();
-    let rows = document.querySelectorAll("#table tr");
-
-    rows.forEach((row, i) => {{
-        if (i === 0) return;
-        row.style.display = row.innerText.toLowerCase().includes(input) ? "" : "none";
-    }});
+function toggleSettings(){{
+document.getElementById("settingsPanel").classList.toggle("open");
 }}
-
-function toggleSettings() {{
-    document.getElementById("settingsPanel").classList.toggle("open");
+function toggleDark(){{
+document.body.classList.toggle("dark");
 }}
-
-function toggleDark() {{
-    document.body.classList.toggle("dark");
-    localStorage.setItem("dark", document.body.classList.contains("dark"));
+function setColor(c){{
+document.documentElement.style.setProperty('--accent', c);
 }}
-
-function setColor(color) {{
-    document.documentElement.style.setProperty('--accent', color);
-    localStorage.setItem("theme", color);
-}}
-
-if (localStorage.getItem("dark") === "true") {{
-    document.body.classList.add("dark");
-}}
-
-if (localStorage.getItem("theme")) {{
-    document.documentElement.style.setProperty('--accent', localStorage.getItem("theme"));
+function search(){{
+let input=document.getElementById("search").value.toLowerCase();
+document.querySelectorAll("table tr").forEach((r,i)=>{{
+if(i===0)return;
+r.style.display=r.innerText.toLowerCase().includes(input)?"":"none";
+}});
 }}
 </script>
 
@@ -461,27 +377,27 @@ if (localStorage.getItem("theme")) {{
 </html>
 """
 
-
+# ================= ADD =================
 @app.post("/add")
-def add(
+def add(request: Request,
     level: str = Form(...),
     subject: str = Form(...),
     homework: str = Form(...),
     student: str = Form(...),
     priority: str = Form(None)
 ):
+    user_id = request.cookies.get("user_id")
+
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute("""
-        INSERT INTO homework (date, level, subject, homework, student, priority)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO homework (user_id, date, level, subject, homework, student, priority)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
     """, (
+        user_id,
         datetime.now().strftime("%Y-%m-%d"),
-        level.strip(),
-        subject.strip(),
-        homework.strip(),
-        student.strip(),
+        level, subject, homework, student,
         1 if priority else 0
     ))
 
@@ -490,15 +406,17 @@ def add(
 
     return RedirectResponse("/", status_code=303)
 
-
+# ================= DELETE =================
 @app.post("/delete/{record_id}")
-def delete(record_id: int):
+def delete(request: Request, record_id: int):
+    user_id = request.cookies.get("user_id")
+
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute(
-        "DELETE FROM homework WHERE id=?",
-        (record_id,)
+        "DELETE FROM homework WHERE id=? AND user_id=?",
+        (record_id, user_id)
     )
 
     conn.commit()
@@ -506,31 +424,21 @@ def delete(record_id: int):
 
     return RedirectResponse("/", status_code=303)
 
-
+# ================= EXPORT =================
 @app.get("/export")
-def export():
-    records = load_records()
+def export(request: Request):
+    user_id = request.cookies.get("user_id")
+    records = load_records(user_id)
 
     output = StringIO()
     writer = csv.writer(output)
 
-    writer.writerow([
-        "Date",
-        "Level",
-        "Subject",
-        "Homework",
-        "Student",
-        "Priority"
-    ])
+    writer.writerow(["Date","Level","Subject","Homework","Student","Priority"])
 
     for r in records:
         writer.writerow([
-            r["Date"],
-            r["Level"],
-            r["Subject"],
-            r["Homework"],
-            r["Student"],
-            r["Priority"]
+            r["Date"], r["Level"], r["Subject"],
+            r["Homework"], r["Student"], r["Priority"]
         ])
 
     output.seek(0)
@@ -538,7 +446,5 @@ def export():
     return StreamingResponse(
         output,
         media_type="text/csv",
-        headers={
-            "Content-Disposition": "attachment; filename=homework.csv"
-        }
+        headers={"Content-Disposition": "attachment; filename=homework.csv"}
     )
