@@ -3,33 +3,32 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 import sqlite3
 from datetime import datetime
 import hashlib
-import json
 
 app = FastAPI()
 DB_PATH = "/tmp/homework.db"
 
-# ================= DB =================
-def get_db():
+# ================= DATABASE =================
+def get_connection():
     return sqlite3.connect(DB_PATH, check_same_thread=False)
 
 def hash_pw(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
 
-def init():
-    db = get_db()
-    c = db.cursor()
+def init_db():
+    conn = get_connection()
+    cursor = conn.cursor()
 
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS users(
-        id INTEGER PRIMARY KEY,
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE,
         password TEXT
     )
     """)
 
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS homework(
-        id INTEGER PRIMARY KEY,
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS homework (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
         date TEXT,
         level TEXT,
@@ -40,42 +39,64 @@ def init():
     )
     """)
 
-    db.commit()
-    db.close()
+    conn.commit()
+    conn.close()
 
-init()
+init_db()
 
 # ================= DATA =================
-def get_records(user_id, shared=False):
-    db = get_db()
-    c = db.cursor()
+def load_records(user_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    SELECT id,date,level,subject,homework,student,priority
+    FROM homework
+    WHERE user_id=?
+    ORDER BY priority DESC,id DESC
+    """,(user_id,))
+    rows = cursor.fetchall()
+    conn.close()
 
-    if shared:
-        c.execute("SELECT * FROM homework ORDER BY priority DESC, id DESC")
-    else:
-        c.execute("SELECT * FROM homework WHERE user_id=? ORDER BY priority DESC, id DESC",(user_id,))
+    return [{
+        "ID":r[0],"Date":r[1],"Level":r[2],
+        "Subject":r[3],"Homework":r[4],
+        "Student":r[5],"Priority":r[6]
+    } for r in rows]
 
-    rows = c.fetchall()
-    db.close()
+def get_counts(user_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    SELECT student,COUNT(*)
+    FROM homework
+    WHERE user_id=?
+    GROUP BY student
+    """,(user_id,))
+    data = dict(cursor.fetchall())
+    conn.close()
+    return data
 
-    return rows
-
-def get_counts(rows):
-    d = {}
-    for r in rows:
-        d[r[6]] = d.get(r[6],0)+1
-    return d
+def get_top(counts):
+    if not counts:
+        return ("None",0)
+    top = max(counts, key=counts.get)
+    return (top, counts[top])
 
 # ================= AUTH =================
-def auth_ui(title, link):
+def auth_page(title, link):
     return f"""
+    <html>
+    <head>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
     <style>
-    body{{background:#eef2ff;display:flex;justify-content:center;align-items:center;height:100vh;font-family:Fredoka}}
-    .card{{background:white;padding:30px;border-radius:20px;width:320px;box-shadow:0 10px 25px rgba(0,0,0,.1)}}
-    input{{width:100%;padding:12px;margin:10px 0;border-radius:14px;border:2px solid #ddd}}
-    button{{width:100%;padding:12px;border:none;border-radius:14px;background:#6366f1;color:white}}
+    *{{font-family:'Fredoka';}}
+    body{{background:#eef2ff;display:flex;justify-content:center;align-items:center;height:100vh;}}
+    .card{{background:white;padding:30px;border-radius:20px;width:320px;box-shadow:0 10px 25px rgba(0,0,0,.1);text-align:center;}}
+    input{{width:100%;padding:12px;margin:10px 0;border-radius:14px;border:2px solid #ddd;}}
+    button{{width:100%;padding:12px;border:none;border-radius:14px;background:#6366f1;color:white;}}
     </style>
-
+    </head>
+    <body>
     <div class="card">
     <h2>{title}</h2>
     <form method="post">
@@ -85,93 +106,119 @@ def auth_ui(title, link):
     </form>
     {link}
     </div>
+    </body>
+    </html>
     """
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page():
-    return auth_ui("Login", '<a href="/signup">Sign up</a>')
+    return auth_page("Login", '<a href="/signup">Create account</a>')
 
 @app.post("/login")
 def login(username: str = Form(...), password: str = Form(...)):
-    db = get_db()
-    c = db.cursor()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE username=? AND password=?",
+                   (username, hash_pw(password)))
+    user = cursor.fetchone()
+    conn.close()
 
-    c.execute("SELECT id FROM users WHERE username=? AND password=?",
-              (username, hash_pw(password)))
-    u = c.fetchone()
-    db.close()
+    if user:
+        res = RedirectResponse("/",303)
+        res.set_cookie("user_id", str(user[0]))
+        return res
 
-    if u:
-        r = RedirectResponse("/",303)
-        r.set_cookie("user_id", str(u[0]))
-        return r
     return RedirectResponse("/login",303)
 
 @app.get("/signup", response_class=HTMLResponse)
 def signup_page():
-    return auth_ui("Sign Up", '<a href="/login">Login</a>')
+    return auth_page("Sign Up", '<a href="/login">Back to login</a>')
 
 @app.post("/signup")
 def signup(username: str = Form(...), password: str = Form(...)):
-    db = get_db()
-    c = db.cursor()
-    c.execute("INSERT INTO users VALUES(NULL,?,?)",
-              (username, hash_pw(password)))
-    db.commit()
-    db.close()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO users VALUES (NULL,?,?)",
+                   (username, hash_pw(password)))
+    conn.commit()
+    conn.close()
     return RedirectResponse("/login",303)
 
 @app.get("/logout")
 def logout():
-    r = RedirectResponse("/login")
-    r.delete_cookie("user_id")
-    return r
+    res = RedirectResponse("/login",303)
+    res.delete_cookie("user_id")
+    return res
 
 # ================= MAIN =================
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
-
     user_id = request.cookies.get("user_id")
     if not user_id:
         return RedirectResponse("/login")
 
-    shared = request.cookies.get("shared") == "true"
+    records = load_records(user_id)
+    counts = get_counts(user_id)
 
-    rows = get_records(user_id, shared)
-    counts = get_counts(rows)
+    total = len(records)
+    unique = len(counts)
+    priority_count = len([r for r in records if r["Priority"]])
+    top_student, top_score = get_top(counts)
 
-    total = len(rows)
-    top = max(counts, key=counts.get) if counts else "None"
-
-    # chart data
-    chart_labels = list(counts.keys())
-    chart_values = list(counts.values())
-
-    table = "".join(f"""
+    rows = "".join(f"""
     <tr>
-    <td>{r[2]}</td>
-    <td>{r[3]}</td>
-    <td>{r[4]}</td>
-    <td>{r[5]}</td>
-    <td>{r[6]}</td>
+    <td>{r['Date']}</td>
+    <td>{r['Level']}</td>
+    <td>{r['Subject']}</td>
+    <td>{r['Homework']}</td>
+    <td>{r['Student']} <span class="badge">{counts.get(r['Student'],0)}</span></td>
     <td>
-    <form action="/delete/{r[0]}" method="post">
-    <button>✕</button>
+    <form action="/delete/{r['ID']}" method="post">
+    <button class="delete">✕</button>
     </form>
     </td>
     </tr>
-    """ for r in rows)
+    """ for r in records)
 
     return f"""
+<html>
+<head>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-*{{font-family:Fredoka;box-sizing:border-box}}
+*{{font-family:'Fredoka';box-sizing:border-box;}}
 
-body{{background:#f8fafc;padding:30px}}
+:root {{
+--bg:#f8fafc;
+--card:#fff;
+--accent:#6366f1;
+}}
 
-.card{{
-background:white;
+body {{
+background:var(--bg);
+padding:30px;
+}}
+
+.container {{max-width:1100px;margin:auto;}}
+
+.header {{
+display:flex;
+justify-content:space-between;
+align-items:center;
+margin-bottom:20px;
+}}
+
+.logout {{
+background:#ef4444;
+padding:8px 14px;
+border-radius:10px;
+color:white;
+text-decoration:none;
+}}
+
+.card {{
+background:var(--card);
 padding:20px;
 border-radius:20px;
 margin-bottom:20px;
@@ -179,64 +226,94 @@ box-shadow:0 8px 20px rgba(0,0,0,.08);
 transition:.2s;
 }}
 
-.card:hover{{transform:translateY(-5px)}}
-
-input{{
-padding:12px;
-border-radius:14px;
-border:2px solid #ddd;
-margin:6px;
-width:100%;
+.card:hover {{
+transform:translateY(-5px);
+box-shadow:0 12px 30px rgba(0,0,0,.12);
 }}
 
-button{{
-padding:10px;
-border-radius:12px;
-border:none;
-background:#6366f1;
-color:white;
-cursor:pointer;
-}}
-
-.grid{{
+.grid {{
 display:grid;
 grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
 gap:20px;
 }}
 
-.topbar{{display:flex;justify-content:space-between}}
+.big {{
+font-size:28px;
+color:var(--accent);
+}}
 
-svg{{width:40px}}
+input {{
+width:100%;
+padding:12px;
+border-radius:14px;
+border:2px solid #ddd;
+margin:8px 0;
+}}
 
+button {{
+padding:10px 16px;
+border:none;
+border-radius:12px;
+background:var(--accent);
+color:white;
+cursor:pointer;
+}}
+
+.delete {{background:#ef4444;}}
+
+.badge {{
+background:#ef4444;
+color:white;
+padding:4px 8px;
+border-radius:999px;
+margin-left:6px;
+}}
+
+table {{
+width:100%;
+border-collapse:collapse;
+}}
+
+th {{
+background:var(--accent);
+color:white;
+padding:10px;
+}}
+
+td {{
+padding:10px;
+border-bottom:1px solid #eee;
+}}
+
+.glow {{
+animation:glow 1.5s infinite alternate;
+}}
+
+@keyframes glow {{
+from {{box-shadow:0 0 5px #aaa;}}
+to {{box-shadow:0 0 20px var(--accent);}}
+}}
 </style>
+</head>
 
-<div class="topbar">
+<body>
+
+<div class="container">
+
+<div class="header">
 <h1>
-<svg viewBox="0 0 24 24"><rect width="24" height="24" fill="#fde68a"/><text x="6" y="17" font-size="12">📘</text></svg>
-Homework
+<svg width="36" viewBox="0 0 24 24" fill="#6366f1">
+<path d="M4 4h14a2 2 0 0 1 2 2v14H6a2 2 0 0 1-2-2V4z"/>
+</svg>
+Homework Tracker
 </h1>
-<div>
-<a href="/logout"><button>Logout</button></a>
-<form method="post" action="/toggle">
-<button>{"Shared Mode" if shared else "Personal Mode"}</button>
-</form>
-</div>
+<a href="/logout" class="logout">Logout</a>
 </div>
 
 <div class="grid">
-<div class="card">🧸 Total<div>{total}</div></div>
-<div class="card">📈 Top<div>{top}</div></div>
-</div>
-
-<div class="card">
-<h3>Add</h3>
-<form method="post" action="/add">
-<input name="level" placeholder="Level">
-<input name="subject" placeholder="Subject">
-<input name="homework" placeholder="Homework">
-<input name="student" placeholder="Student">
-<button>Add</button>
-</form>
+<div class="card glow">Total<div class="big">{total}</div></div>
+<div class="card">Students<div class="big">{unique}</div></div>
+<div class="card">Priority<div class="big">{priority_count}</div></div>
 </div>
 
 <div class="card">
@@ -244,61 +321,83 @@ Homework
 </div>
 
 <div class="card">
-<table width="100%">
-<tr><th>Date</th><th>Level</th><th>Subject</th><th>HW</th><th>Student</th><th></th></tr>
-{table}
+<h3>Top Student</h3>
+<b>{top_student}</b> ({top_score})
+</div>
+
+<div class="card">
+<h3>Add Record</h3>
+<form method="post" action="/add">
+<input name="level" placeholder="Level">
+<input name="subject" placeholder="Subject">
+<input name="homework" placeholder="Homework">
+<input name="student" placeholder="Student">
+<label><input type="checkbox" name="priority"> Priority</label><br><br>
+<button>Add ✨</button>
+</form>
+</div>
+
+<div class="card">
+<h3>Records</h3>
+<table>
+<tr>
+<th>Date</th><th>Level</th><th>Subject</th><th>Homework</th><th>Student</th><th>Action</th>
+</tr>
+{rows}
 </table>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</div>
+
 <script>
+const data = {counts};
+
 new Chart(document.getElementById('chart'), {{
-type:'bar',
-data:{{
-labels:{json.dumps(chart_labels)},
-datasets:[{{label:'Students',data:{json.dumps(chart_values)}}}]
+type: 'line',
+data: {{
+labels: Object.keys(data),
+datasets: [{{
+data: Object.values(data),
+borderColor: '#6366f1',
+backgroundColor: 'rgba(99,102,241,0.2)',
+tension: 0.4,
+fill: true
+}}]
 }}
-}})
+}});
 </script>
+
+</body>
+</html>
 """
-
-@app.post("/toggle")
-def toggle(request: Request):
-    shared = request.cookies.get("shared") == "true"
-    r = RedirectResponse("/",303)
-    r.set_cookie("shared", "false" if shared else "true")
-    return r
-
 # ================= ADD =================
 @app.post("/add")
 def add(request: Request,
 level: str = Form(...),
 subject: str = Form(...),
 homework: str = Form(...),
-student: str = Form(...)):
-
+student: str = Form(...),
+priority: str = Form(None)):
     user_id = request.cookies.get("user_id")
-
-    db = get_db()
-    c = db.cursor()
-
-    c.execute("""
-    INSERT INTO homework VALUES(NULL,?,?,?,?,?,?,0)
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    INSERT INTO homework VALUES (NULL,?,?,?,?,?,?,?)
     """,(user_id,
         datetime.now().strftime("%Y-%m-%d"),
-        level,subject,homework,student))
-
-    db.commit()
-    db.close()
-
+        level,subject,homework,student,
+        1 if priority else 0))
+    conn.commit()
+    conn.close()
     return RedirectResponse("/",303)
 
 # ================= DELETE =================
 @app.post("/delete/{id}")
-def delete(id:int):
-    db = get_db()
-    c = db.cursor()
-    c.execute("DELETE FROM homework WHERE id=?",(id,))
-    db.commit()
-    db.close()
+def delete(request: Request, id: int):
+    user_id = request.cookies.get("user_id")
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM homework WHERE id=? AND user_id=?", (id,user_id))
+    conn.commit()
+    conn.close()
     return RedirectResponse("/",303)
