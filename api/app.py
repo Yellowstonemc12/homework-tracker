@@ -1,21 +1,10 @@
-# Complete Ultimate Homework Tracker (FastAPI)
-
-```python
 from fastapi import FastAPI, Form
-from fastapi.responses import (
-    HTMLResponse,
-    RedirectResponse,
-    Response,
-    StreamingResponse,
-    FileResponse
-)
-
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 import sqlite3
 from datetime import datetime
 import csv
-import io
-import matplotlib.pyplot as plt
-from reportlab.pdfgen import canvas
+from fastapi.responses import StreamingResponse
+from io import StringIO
 
 app = FastAPI()
 
@@ -26,10 +15,8 @@ DB_PATH = "/tmp/homework.db"
 # DATABASE
 # =========================
 
-
 def get_connection():
     return sqlite3.connect(DB_PATH)
-
 
 
 def init_db():
@@ -49,13 +36,6 @@ def init_db():
         )
     """)
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS student_stats (
-            student TEXT PRIMARY KEY,
-            missing_count INTEGER DEFAULT 0
-        )
-    """)
-
     conn.commit()
     conn.close()
 
@@ -63,32 +43,16 @@ def init_db():
 init_db()
 
 
-# =========================
-# HELPERS
-# =========================
-
-
-def load_records(search=""):
+def load_records():
 
     conn = get_connection()
     cursor = conn.cursor()
 
-    if search:
-
-        cursor.execute("""
-            SELECT id, date, level, subject, homework, student, priority
-            FROM homework
-            WHERE student LIKE ?
-            ORDER BY priority DESC, id DESC
-        """, (f"%{search}%",))
-
-    else:
-
-        cursor.execute("""
-            SELECT id, date, level, subject, homework, student, priority
-            FROM homework
-            ORDER BY priority DESC, id DESC
-        """)
+    cursor.execute("""
+        SELECT id, date, level, subject, homework, student, priority
+        FROM homework
+        ORDER BY priority DESC, id DESC
+    """)
 
     rows = cursor.fetchall()
 
@@ -108,66 +72,27 @@ def load_records(search=""):
     ]
 
 
-
 def get_student_count(student_name):
 
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT missing_count
-        FROM student_stats
+        SELECT COUNT(*)
+        FROM homework
         WHERE student = ?
     """, (student_name,))
 
-    row = cursor.fetchone()
+    count = cursor.fetchone()[0]
 
     conn.close()
 
-    if row:
-        return row[0]
-
-    return 0
-
-
-
-def get_leaderboard():
-
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT student, missing_count
-        FROM student_stats
-        ORDER BY missing_count DESC
-        LIMIT 5
-    """)
-
-    rows = cursor.fetchall()
-
-    conn.close()
-
-    return rows
-
-
-
-def predict_risk(student_name):
-
-    count = get_student_count(student_name)
-
-    if count >= 10:
-        return "🔥 High Risk"
-
-    elif count >= 5:
-        return "⚠ Medium Risk"
-
-    return "✅ Low Risk"
+    return count
 
 
 # =========================
 # ROUTES
 # =========================
-
 
 @app.get("/favicon.ico")
 def favicon():
@@ -177,9 +102,48 @@ def favicon():
 @app.get("/", response_class=HTMLResponse)
 def home(search: str = ""):
 
-    records = load_records(search)
+    records = load_records()
 
-    leaderboard = get_leaderboard()
+    if search:
+        records = [
+            r for r in records
+            if search.lower() in r["Student"].lower()
+        ]
+
+    # =========================
+    # LEADERBOARD
+    # =========================
+
+    student_totals = {}
+
+    for r in load_records():
+
+        student = r["Student"]
+
+        if student not in student_totals:
+            student_totals[student] = 0
+
+        student_totals[student] += 1
+
+    sorted_students = sorted(
+        student_totals.items(),
+        key=lambda x: x[1],
+        reverse=True
+    )
+
+    leaderboard_rows = "".join(
+        f"""
+        <tr>
+            <td>🏆 {name}</td>
+            <td>{count}</td>
+        </tr>
+        """
+        for name, count in sorted_students[:5]
+    )
+
+    # =========================
+    # PRIORITY TABLE
+    # =========================
 
     priority_rows = "".join(
         f"""
@@ -198,23 +162,20 @@ def home(search: str = ""):
         if r["Priority"] == 1
     )
 
-    leaderboard_rows = "".join(
-        f"""
-        <tr>
-            <td>🏅 {student}</td>
-            <td>{count}</td>
-        </tr>
-        """
-        for student, count in leaderboard
-    )
+    # =========================
+    # MAIN TABLE
+    # =========================
 
     rows = "".join(
         f"""
         <tr>
 
             <td>{r['Date']}</td>
+
             <td>{r['Level']}</td>
+
             <td>{r['Subject']}</td>
+
             <td>{r['Homework']}</td>
 
             <td>
@@ -228,10 +189,6 @@ def home(search: str = ""):
 
                 <span class='counter-badge'>
                     Missing: {get_student_count(r['Student'])}
-                </span>
-
-                <span class='risk-badge'>
-                    {predict_risk(r['Student'])}
                 </span>
 
             </td>
@@ -261,7 +218,7 @@ def home(search: str = ""):
 
     <head>
 
-        <title>Ultimate Homework Tracker</title>
+        <title>Homework Tracker</title>
 
         <meta name="viewport" content="width=device-width, initial-scale=1">
 
@@ -278,21 +235,6 @@ def home(search: str = ""):
                 background: #f4f7fb;
                 color: #222;
                 padding: 40px;
-                transition: 0.3s;
-            }}
-
-            .dark-mode {{
-                background: #111827;
-                color: white;
-            }}
-
-            .dark-mode .card {{
-                background: #1f2937;
-                color: white;
-            }}
-
-            .dark-mode table {{
-                color: white;
             }}
 
             .container {{
@@ -337,6 +279,7 @@ def home(search: str = ""):
             }}
 
             button {{
+                grid-column: span 2;
                 padding: 14px;
                 border: none;
                 border-radius: 12px;
@@ -354,6 +297,16 @@ def home(search: str = ""):
 
             .delete-btn {{
                 background: #dc2626;
+                padding: 8px 12px;
+                border-radius: 8px;
+                font-size: 14px;
+                border: none;
+                color: white;
+                cursor: pointer;
+            }}
+
+            .delete-btn:hover {{
+                background: #b91c1c;
             }}
 
             .export-btn {{
@@ -361,13 +314,8 @@ def home(search: str = ""):
                 margin-top: 15px;
             }}
 
-            .pdf-btn {{
-                background: #9333ea;
-                margin-top: 15px;
-            }}
-
-            .theme-btn {{
-                margin-bottom: 20px;
+            .export-btn:hover {{
+                background: #047857;
             }}
 
             table {{
@@ -393,6 +341,12 @@ def home(search: str = ""):
                 background: #f9fbff;
             }}
 
+            .empty {{
+                text-align: center;
+                color: #777;
+                padding: 30px;
+            }}
+
             .badge {{
                 display: inline-block;
                 background: #2563eb;
@@ -401,6 +355,14 @@ def home(search: str = ""):
                 border-radius: 999px;
                 font-size: 14px;
                 margin-bottom: 15px;
+            }}
+
+            .priority-label {{
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                font-weight: bold;
+                color: #d97706;
             }}
 
             .priority-badge {{
@@ -425,20 +387,37 @@ def home(search: str = ""):
                 margin-left: 8px;
             }}
 
-            .risk-badge {{
-                display: inline-block;
-                background: #7c3aed;
-                color: white;
-                padding: 4px 10px;
-                border-radius: 999px;
-                font-size: 12px;
-                font-weight: bold;
-                margin-left: 8px;
+            .search-bar {{
+                margin-bottom: 20px;
             }}
 
-            .search-box {{
-                width: 100%;
-                margin-bottom: 20px;
+            .leaderboard-card {{
+                border-left: 6px solid #f59e0b;
+            }}
+
+            @media (max-width: 700px) {{
+
+                body {{
+                    padding: 20px;
+                }}
+
+                .add-form {{
+                    grid-template-columns: 1fr;
+                }}
+
+                button {{
+                    grid-column: span 1;
+                }}
+
+                .title {{
+                    font-size: 32px;
+                }}
+
+                table {{
+                    font-size: 14px;
+                    display: block;
+                    overflow-x: auto;
+                }}
             }}
 
         </style>
@@ -450,18 +429,12 @@ def home(search: str = ""):
         <div class="container">
 
             <div class="title">
-                📘 Ultimate Homework Tracker
+                📘 Homework Tracker
             </div>
 
             <div class="subtitle">
-                Teacher Command Center 🚀
+                Manage student homework submissions easily
             </div>
-
-            <button class="theme-btn" onclick="toggleDarkMode()">
-                🌙 Toggle Dark Mode
-            </button>
-
-            <!-- ADD RECORD -->
 
             <div class="card">
 
@@ -501,9 +474,12 @@ def home(search: str = ""):
                         required
                     >
 
-                    <label>
+                    <label class="priority-label">
+
                         <input type="checkbox" name="priority">
+
                         ⭐ Priority Student
+
                     </label>
 
                     <button type="submit">
@@ -513,8 +489,6 @@ def home(search: str = ""):
                 </form>
 
             </div>
-
-            <!-- PRIORITY -->
 
             <div class="card">
 
@@ -537,22 +511,20 @@ def home(search: str = ""):
                     '''
                     if priority_rows
                     else
-                    '<div>No priority students 🎉</div>'
+                    '<div class="empty">No priority students 🎉</div>'
                 }
 
             </div>
 
-            <!-- LEADERBOARD -->
+            <div class="card leaderboard-card">
 
-            <div class="card">
-
-                <h2>🏆 Leaderboard</h2>
+                <h2>🏆 Top Missing Homework Students</h2>
 
                 <table>
 
                     <tr>
                         <th>Student</th>
-                        <th>Missing Homework</th>
+                        <th>Missing Count</th>
                     </tr>
 
                     {leaderboard_rows}
@@ -561,8 +533,6 @@ def home(search: str = ""):
 
             </div>
 
-            <!-- RECORDS -->
-
             <div class="card">
 
                 <h2>📋 Records</h2>
@@ -570,7 +540,7 @@ def home(search: str = ""):
                 <form method="get">
 
                     <input
-                        class="search-box"
+                        class="search-bar"
                         type="text"
                         name="search"
                         placeholder="🔍 Search Student"
@@ -578,6 +548,14 @@ def home(search: str = ""):
                     >
 
                 </form>
+
+                <a href="/export">
+                    <button class="export-btn">
+                        📥 Export CSV
+                    </button>
+                </a>
+
+                <br><br>
 
                 {
                     f'''
@@ -598,44 +576,12 @@ def home(search: str = ""):
                     '''
                     if records
                     else
-                    '<div>No records yet 🌱</div>'
+                    '<div class="empty">No records yet 🌱</div>'
                 }
-
-                <form action="/export" method="get">
-
-                    <button class="export-btn" type="submit">
-                        📥 Export CSV
-                    </button>
-
-                </form>
-
-                <form action="/export-pdf" method="get">
-
-                    <button class="pdf-btn" type="submit">
-                        🧾 Export PDF
-                    </button>
-
-                </form>
-
-                <form action="/chart" method="get">
-
-                    <button type="submit">
-                        📈 View Statistics Chart
-                    </button>
-
-                </form>
 
             </div>
 
         </div>
-
-        <script>
-
-            function toggleDarkMode() {{
-                document.body.classList.toggle('dark-mode');
-            }}
-
-        </script>
 
     </body>
 
@@ -646,7 +592,6 @@ def home(search: str = ""):
 # =========================
 # ADD RECORD
 # =========================
-
 
 @app.post("/add")
 def add(
@@ -702,18 +647,6 @@ def add(
             is_priority
         ))
 
-        cursor.execute("""
-            INSERT INTO student_stats (
-                student,
-                missing_count
-            )
-            VALUES (?, 1)
-
-            ON CONFLICT(student)
-            DO UPDATE SET
-            missing_count = missing_count + 1
-        """, (student.strip(),))
-
         conn.commit()
 
     conn.close()
@@ -722,31 +655,8 @@ def add(
 
 
 # =========================
-# DELETE
-# =========================
-
-
-@app.post("/delete/{record_id}")
-def delete_record(record_id: int):
-
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute(
-        "DELETE FROM homework WHERE id = ?",
-        (record_id,)
-    )
-
-    conn.commit()
-    conn.close()
-
-    return RedirectResponse("/", status_code=303)
-
-
-# =========================
 # EXPORT CSV
 # =========================
-
 
 @app.get("/export")
 def export_csv():
@@ -757,15 +667,13 @@ def export_csv():
     cursor.execute("""
         SELECT date, level, subject, homework, student, priority
         FROM homework
-        ORDER BY id DESC
     """)
 
     rows = cursor.fetchall()
 
     conn.close()
 
-    output = io.StringIO()
-
+    output = StringIO()
     writer = csv.writer(output)
 
     writer.writerow([
@@ -787,68 +695,27 @@ def export_csv():
         media_type="text/csv",
         headers={
             "Content-Disposition":
-            "attachment; filename=homework_records.csv"
+            "attachment; filename=homework.csv"
         }
     )
 
 
 # =========================
-# EXPORT PDF
+# DELETE RECORD
 # =========================
 
+@app.post("/delete/{record_id}")
+def delete_record(record_id: int):
 
-@app.get("/export-pdf")
-def export_pdf():
+    conn = get_connection()
+    cursor = conn.cursor()
 
-    file_name = "report.pdf"
+    cursor.execute(
+        "DELETE FROM homework WHERE id = ?",
+        (record_id,)
+    )
 
-    c = canvas.Canvas(file_name)
+    conn.commit()
+    conn.close()
 
-    c.drawString(100, 800, "Homework Report")
-
-    c.save()
-
-    return FileResponse(file_name)
-
-
-# =========================
-# CHARTS
-# =========================
-
-
-@app.get("/chart")
-def chart():
-
-    leaderboard = get_leaderboard()
-
-    students = [x[0] for x in leaderboard]
-    counts = [x[1] for x in leaderboard]
-
-    plt.figure(figsize=(8, 5))
-
-    plt.bar(students, counts)
-
-    plt.title("Missing Homework Statistics")
-
-    plt.xlabel("Students")
-    plt.ylabel("Missing Count")
-
-    chart_file = "chart.png"
-
-    plt.savefig(chart_file)
-
-    return FileResponse(chart_file)
-
-```
-
-# 📦 INSTALL THESE
-
-```bash
-pip install fastapi uvicorn matplotlib reportlab
-```
-
-# ▶ RUN
-
-```bash
-uvicorn app:app --reload
-```
+    return RedirectResponse("/", status_code=303)
