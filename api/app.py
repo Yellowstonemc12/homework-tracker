@@ -142,6 +142,31 @@ def home(search: str = ""):
     )
 
     # =========================
+    # STATISTICS
+    # =========================
+
+    total_records = len(load_records())
+
+    total_priority = len([
+        r for r in load_records()
+        if r["Priority"] == 1
+    ])
+
+    total_students = len(set(
+        r["Student"] for r in load_records()
+    ))
+
+    top_student = (
+        sorted_students[0][0]
+        if sorted_students else "None"
+    )
+
+    top_missing = (
+        sorted_students[0][1]
+        if sorted_students else 0
+    )
+
+    # =========================
     # PRIORITY TABLE
     # =========================
 
@@ -261,6 +286,27 @@ def home(search: str = ""):
                 margin-bottom: 30px;
             }}
 
+            .stats-grid {{
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                gap: 20px;
+                margin-bottom: 30px;
+            }}
+
+            .stat-card {{
+                background: white;
+                padding: 25px;
+                border-radius: 18px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            }}
+
+            .stat-number {{
+                font-size: 36px;
+                font-weight: bold;
+                color: #2563eb;
+                margin-top: 10px;
+            }}
+
             .card h2 {{
                 margin-bottom: 20px;
             }}
@@ -347,16 +393,6 @@ def home(search: str = ""):
                 padding: 30px;
             }}
 
-            .badge {{
-                display: inline-block;
-                background: #2563eb;
-                color: white;
-                padding: 6px 12px;
-                border-radius: 999px;
-                font-size: 14px;
-                margin-bottom: 15px;
-            }}
-
             .priority-label {{
                 display: flex;
                 align-items: center;
@@ -395,31 +431,6 @@ def home(search: str = ""):
                 border-left: 6px solid #f59e0b;
             }}
 
-            @media (max-width: 700px) {{
-
-                body {{
-                    padding: 20px;
-                }}
-
-                .add-form {{
-                    grid-template-columns: 1fr;
-                }}
-
-                button {{
-                    grid-column: span 1;
-                }}
-
-                .title {{
-                    font-size: 32px;
-                }}
-
-                table {{
-                    font-size: 14px;
-                    display: block;
-                    overflow-x: auto;
-                }}
-            }}
-
         </style>
 
     </head>
@@ -436,157 +447,44 @@ def home(search: str = ""):
                 Manage student homework submissions easily
             </div>
 
-            <div class="card">
+            <!-- STATISTICS -->
 
-                <div class="badge">
-                    Total Records: {len(records)}
+            <div class="stats-grid">
+
+                <div class="stat-card">
+                    📚 Total Records
+                    <div class="stat-number">
+                        {total_records}
+                    </div>
                 </div>
 
-                <h2>Add Record</h2>
+                <div class="stat-card">
+                    👥 Unique Students
+                    <div class="stat-number">
+                        {total_students}
+                    </div>
+                </div>
 
-                <form class="add-form" action="/add" method="post">
+                <div class="stat-card">
+                    ⭐ Priority Students
+                    <div class="stat-number">
+                        {total_priority}
+                    </div>
+                </div>
 
-                    <input
-                        type="text"
-                        name="level"
-                        placeholder="Primary Level"
-                        required
-                    >
+                <div class="stat-card">
+                    🏆 Top Missing Student
+                    <div class="stat-number" style="font-size:22px;">
+                        {top_student}
+                    </div>
 
-                    <input
-                        type="text"
-                        name="subject"
-                        placeholder="Subject"
-                        required
-                    >
-
-                    <input
-                        type="text"
-                        name="homework"
-                        placeholder="Homework Name"
-                        required
-                    >
-
-                    <input
-                        type="text"
-                        name="student"
-                        placeholder="Student Name"
-                        required
-                    >
-
-                    <label class="priority-label">
-
-                        <input type="checkbox" name="priority">
-
-                        ⭐ Priority Student
-
-                    </label>
-
-                    <button type="submit">
-                        Add Record
-                    </button>
-
-                </form>
+                    <div style="margin-top:10px;">
+                        Missing: {top_missing}
+                    </div>
+                </div>
 
             </div>
-
-            <div class="card">
-
-                <h2>⭐ Priority Students</h2>
-
-                {
-                    f'''
-                    <table>
-
-                        <tr>
-                            <th>Student</th>
-                            <th>Homework</th>
-                            <th>Subject</th>
-                            <th>Status</th>
-                        </tr>
-
-                        {priority_rows}
-
-                    </table>
-                    '''
-                    if priority_rows
-                    else
-                    '<div class="empty">No priority students 🎉</div>'
-                }
-
-            </div>
-
-            <div class="card leaderboard-card">
-
-                <h2>🏆 Top Missing Homework Students</h2>
-
-                <table>
-
-                    <tr>
-                        <th>Student</th>
-                        <th>Missing Count</th>
-                    </tr>
-
-                    {leaderboard_rows}
-
-                </table>
-
-            </div>
-
-            <div class="card">
-
-                <h2>📋 Records</h2>
-
-                <form method="get">
-
-                    <input
-                        class="search-bar"
-                        type="text"
-                        name="search"
-                        placeholder="🔍 Search Student"
-                        value="{search}"
-                    >
-
-                </form>
-
-                <a href="/export">
-                    <button class="export-btn">
-                        📥 Export CSV
-                    </button>
-                </a>
-
-                <br><br>
-
-                {
-                    f'''
-                    <table>
-
-                        <tr>
-                            <th>Date</th>
-                            <th>Level</th>
-                            <th>Subject</th>
-                            <th>Homework</th>
-                            <th>Student</th>
-                            <th>Action</th>
-                        </tr>
-
-                        {rows}
-
-                    </table>
-                    '''
-                    if records
-                    else
-                    '<div class="empty">No records yet 🌱</div>'
-                }
-
-            </div>
-
-        </div>
-
-    </body>
-
-    </html>
-    """
+            """
 
 
 # =========================
