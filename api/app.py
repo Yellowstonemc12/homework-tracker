@@ -426,3 +426,5 @@ def delete(request: Request, id: int):
     conn.close()
 
     return RedirectResponse("/",303)
+
+handler = app
