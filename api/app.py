@@ -17,7 +17,6 @@ def hash_pw(pw):
 def init_db():
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -25,7 +24,6 @@ def init_db():
         password TEXT
     )
     """)
-
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS homework (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,7 +36,6 @@ def init_db():
         priority INTEGER DEFAULT 0
     )
     """)
-
     conn.commit()
     conn.close()
 
@@ -48,17 +45,14 @@ init_db()
 def load_records(user_id):
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("""
     SELECT id,date,level,subject,homework,student,priority
     FROM homework
     WHERE user_id=?
     ORDER BY priority DESC,id DESC
     """,(user_id,))
-
     rows = cursor.fetchall()
     conn.close()
-
     return [{
         "ID":r[0],"Date":r[1],"Level":r[2],
         "Subject":r[3],"Homework":r[4],
@@ -68,14 +62,12 @@ def load_records(user_id):
 def get_counts(user_id):
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("""
     SELECT student,COUNT(*)
     FROM homework
     WHERE user_id=?
     GROUP BY student
     """,(user_id,))
-
     data = dict(cursor.fetchall())
     conn.close()
     return data
@@ -83,7 +75,6 @@ def get_counts(user_id):
 def get_daily_counts(user_id):
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("""
     SELECT date, COUNT(*)
     FROM homework
@@ -91,7 +82,6 @@ def get_daily_counts(user_id):
     GROUP BY date
     ORDER BY date
     """,(user_id,))
-
     data = cursor.fetchall()
     conn.close()
     return data
@@ -139,18 +129,14 @@ def login_page():
 def login(username: str = Form(...), password: str = Form(...)):
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("SELECT id FROM users WHERE username=? AND password=?",
                    (username, hash_pw(password)))
-
     user = cursor.fetchone()
     conn.close()
-
     if user:
         res = RedirectResponse("/",303)
         res.set_cookie("user_id", str(user[0]))
         return res
-
     return RedirectResponse("/login",303)
 
 @app.get("/signup", response_class=HTMLResponse)
@@ -161,13 +147,10 @@ def signup_page():
 def signup(username: str = Form(...), password: str = Form(...)):
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("INSERT INTO users VALUES (NULL,?,?)",
                    (username, hash_pw(password)))
-
     conn.commit()
     conn.close()
-
     return RedirectResponse("/login",303)
 
 @app.get("/logout")
@@ -180,7 +163,6 @@ def logout():
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     user_id = request.cookies.get("user_id")
-
     if not user_id:
         return RedirectResponse("/login")
 
@@ -193,7 +175,6 @@ def home(request: Request):
     priority_count = len([r for r in records if r["Priority"]])
     top_student, top_score = get_top(counts)
 
-    # line graph data
     labels = [d[0] for d in daily]
     values = [d[1] for d in daily]
 
@@ -220,7 +201,6 @@ def home(request: Request):
 
 <style>
 *{{font-family:'Fredoka';box-sizing:border-box;}}
-
 body{{background:#f8fafc;padding:30px;}}
 
 .container{{max-width:1100px;margin:auto;}}
@@ -231,12 +211,6 @@ padding:20px;
 border-radius:20px;
 margin-bottom:20px;
 box-shadow:0 8px 20px rgba(0,0,0,.08);
-transition:.2s;
-}}
-
-.card:hover{{
-transform:translateY(-5px);
-box-shadow:0 12px 30px rgba(0,0,0,.12);
 }}
 
 .grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;}}
@@ -247,21 +221,35 @@ box-shadow:0 12px 30px rgba(0,0,0,.12);
 
 input{{border-radius:14px;padding:10px;border:2px solid #ddd;width:100%;margin:6px 0;}}
 
-button{{border-radius:12px;padding:8px 12px;border:none;background:#6366f1;color:white;}}
+button{{border-radius:12px;padding:8px 12px;border:none;background:#6366f1;color:white;cursor:pointer;}}
 
 .delete{{background:#ef4444;}}
 
-.header{{
-display:flex;
-justify-content:space-between;
-align-items:center;
+/* TABLE FIX */
+table {{
+width:100%;
+border-collapse:separate;
+border-spacing:0 10px;
 }}
 
-.kawaii-icon {{
-width:26px;
-vertical-align:middle;
-margin-right:6px;
+thead th {{
+text-align:left;
+padding:10px;
+color:#555;
 }}
+
+tbody tr {{
+background:white;
+box-shadow:0 4px 10px rgba(0,0,0,0.05);
+border-radius:12px;
+}}
+
+tbody td {{
+padding:12px;
+}}
+
+.header{{display:flex;justify-content:space-between;align-items:center;}}
+
 </style>
 </head>
 
@@ -270,11 +258,7 @@ margin-right:6px;
 <div class="container">
 
 <div class="header">
-<h1>
-<img class="kawaii-icon" src="https://api.iconify.design/mdi:book-open-variant.svg?color=%236366f1">
-Homework Tracker
-</h1>
-
+<h1>Homework Tracker</h1>
 <a href="/logout"><button>Logout</button></a>
 </div>
 
@@ -284,7 +268,6 @@ Homework Tracker
 <div class="card">Priority<div class="big">{priority_count}</div></div>
 </div>
 
-<!-- LINE GRAPH -->
 <div class="card">
 <h3>📈 Daily Entries</h3>
 <canvas id="chart"></canvas>
@@ -307,56 +290,55 @@ Homework Tracker
 </form>
 </div>
 
+<!-- ✅ FIXED RECORDS SECTION -->
 <div class="card">
 
-    <!-- HEADER BAR -->
-    <div style="
-        background:#6366f1;
-        color:white;
-        padding:14px 18px;
-        border-radius:16px;
-        display:flex;
-        justify-content:space-between;
-        align-items:center;
-        margin-bottom:15px;
-    ">
-        <h3 style="margin:0;">📋 Records</h3>
+<div style="
+background:#6366f1;
+color:white;
+padding:16px 20px;
+border-radius:16px;
+display:flex;
+justify-content:space-between;
+align-items:center;
+margin-bottom:18px;
+">
+<h3 style="margin:0;">Records</h3>
 
-        <a href="/export">
-            <button style="
-                background:white;
-                color:#6366f1;
-                font-weight:bold;
-            ">
-                Export CSV
-            </button>
-        </a>
-    </div>
+<a href="/export">
+<button style="background:white;color:#6366f1;font-weight:bold;">
+Export CSV
+</button>
+</a>
+</div>
 
-    <!-- TABLE CONTAINER -->
-    <div style="
-        background:#f9fafb;
-        border-radius:16px;
-        padding:10px;
-        overflow-x:auto;
-    ">
+<div style="
+background:#f9fafb;
+border-radius:16px;
+padding:14px;
+overflow-x:auto;
+">
 
-        <table style="margin-top:0;">
-            <tr>
-                <th>Date</th>
-                <th>Level</th>
-                <th>Subject</th>
-                <th>Homework</th>
-                <th>Student</th>
-                <th>Action</th>
-            </tr>
+<table>
 
-            {rows}
+<thead>
+<tr>
+<th>Date</th>
+<th>Level</th>
+<th>Subject</th>
+<th>Homework</th>
+<th>Student</th>
+<th>Action</th>
+</tr>
+</thead>
 
-        </table>
+<tbody>
+{rows}
+</tbody>
 
-    </div>
+</table>
 
+</div>
 </div>
 
 </div>
@@ -393,14 +375,12 @@ priority: str = Form(None)):
 
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("""
     INSERT INTO homework VALUES (NULL,?,?,?,?,?,?,?)
     """,(user_id,
         datetime.now().strftime("%Y-%m-%d"),
         level,subject,homework,student,
         1 if priority else 0))
-
     conn.commit()
     conn.close()
 
@@ -409,14 +389,11 @@ priority: str = Form(None)):
 # ================= DELETE =================
 @app.post("/delete/{id}")
 def delete(request: Request, id: int):
-
     user_id = request.cookies.get("user_id")
 
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("DELETE FROM homework WHERE id=? AND user_id=?", (id,user_id))
-
     conn.commit()
     conn.close()
 
