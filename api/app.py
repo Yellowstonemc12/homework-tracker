@@ -1,17 +1,14 @@
 from fastapi import FastAPI, Form
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
 import sqlite3
 from datetime import datetime
 import csv
-from fastapi.responses import StreamingResponse
 from io import StringIO
 
 app = FastAPI()
 DB_PATH = "/tmp/homework.db"
 
-# =========================
-# DATABASE
-# =========================
+# ================= DATABASE =================
 def get_connection():
     return sqlite3.connect(DB_PATH, check_same_thread=False)
 
@@ -34,9 +31,7 @@ def init_db():
 
 init_db()
 
-# =========================
-# LOAD DATA
-# =========================
+# ================= DATA =================
 def load_records():
     conn = get_connection()
     cursor = conn.cursor()
@@ -75,9 +70,7 @@ def get_top_student(counts):
     top = max(counts, key=counts.get)
     return (top, counts[top])
 
-# =========================
-# ROUTES
-# =========================
+# ================= ROUTES =================
 @app.get("/favicon.ico")
 def favicon():
     return Response(status_code=204)
@@ -92,7 +85,15 @@ def home():
     priority_count = len([r for r in records if r["Priority"]])
     top_student, top_missing = get_top_student(counts)
 
-    # rows
+    priority_rows = "".join(f"""
+    <tr>
+        <td>{r['Student']}</td>
+        <td>{r['Homework']}</td>
+        <td>{r['Subject']}</td>
+        <td><span class="priority">★</span></td>
+    </tr>
+    """ for r in records if r["Priority"])
+
     rows = "".join(f"""
     <tr>
         <td>{r['Date']}</td>
@@ -101,12 +102,12 @@ def home():
         <td>{r['Homework']}</td>
         <td>
             {r['Student']}
-            {"🌟" if r['Priority'] else ""}
+            {"<span class='priority'>★</span>" if r['Priority'] else ""}
             <span class="badge">{counts.get(r['Student'],0)}</span>
         </td>
         <td>
             <form action="/delete/{r['ID']}" method="post">
-                <button class="delete">❌</button>
+                <button class="delete">✕</button>
             </form>
         </td>
     </tr>
@@ -121,9 +122,10 @@ def home():
 
 <style>
 :root {{
-    --bg: #f4f7fb;
-    --card: white;
-    --text: #222;
+    --bg: #fdf6ff;
+    --card: #ffffff;
+    --text: #2d2d2d;
+    --accent: #a78bfa;
 }}
 
 .dark {{
@@ -150,6 +152,11 @@ body {{
     font-weight: bold;
 }}
 
+.subtitle {{
+    color: #888;
+    margin-bottom: 20px;
+}}
+
 .card {{
     background: var(--card);
     padding: 20px;
@@ -160,7 +167,7 @@ body {{
 }}
 
 .card:hover {{
-    transform: translateY(-3px);
+    transform: translateY(-4px);
 }}
 
 .grid {{
@@ -171,21 +178,27 @@ body {{
 
 .big {{
     font-size: 32px;
-    color: #60a5fa;
+    color: var(--accent);
 }}
 
 input {{
-    padding: 10px;
-    border-radius: 10px;
-    border: none;
+    padding: 12px;
+    border-radius: 12px;
+    border: 2px solid #ddd;
     margin: 5px;
+    transition: 0.2s;
+}}
+
+input:focus {{
+    border-color: var(--accent);
+    outline: none;
 }}
 
 button {{
     padding: 10px 16px;
     border-radius: 12px;
     border: none;
-    background: #6366f1;
+    background: var(--accent);
     color: white;
     cursor: pointer;
 }}
@@ -197,9 +210,16 @@ button {{
 .badge {{
     background: #fb7185;
     color: white;
-    padding: 3px 8px;
+    padding: 4px 8px;
     border-radius: 10px;
     margin-left: 6px;
+}}
+
+.priority {{
+    background: gold;
+    padding: 4px 8px;
+    border-radius: 10px;
+    margin-left: 5px;
 }}
 
 table {{
@@ -209,10 +229,6 @@ table {{
 
 td, th {{
     padding: 10px;
-}}
-
-tr {{
-    transition: 0.2s;
 }}
 
 tr:hover {{
@@ -230,9 +246,12 @@ tr:hover {{
 <div class="container">
 
 <div class="title">
-🧸 Homework Tracker
+<img src="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f4d8.svg" width="40">
+ Homework Tracker
 <span class="toggle" onclick="toggleDark()">🌙</span>
 </div>
+
+<div class="subtitle">Cute + clean tracker ✨</div>
 
 <!-- STATS -->
 <div class="grid">
@@ -244,14 +263,21 @@ tr:hover {{
 
 <!-- ADD -->
 <div class="card">
+<h3>Add Record</h3>
 <form action="/add" method="post">
 <input name="level" placeholder="Level" required>
 <input name="subject" placeholder="Subject" required>
 <input name="homework" placeholder="Homework" required>
 <input name="student" placeholder="Student" required>
-<label><input type="checkbox" name="priority"> ⭐</label>
+<label><input type="checkbox" name="priority"> Priority</label>
 <button>Add ✨</button>
 </form>
+</div>
+
+<!-- PRIORITY -->
+<div class="card">
+<h3>⭐ Priority Students</h3>
+{f"<table>{priority_rows}</table>" if priority_rows else "None 🎉"}
 </div>
 
 <!-- EXPORT -->
@@ -261,6 +287,7 @@ tr:hover {{
 
 <!-- RECORDS -->
 <div class="card">
+<h3>Records</h3>
 <input id="search" placeholder="🔍 Search..." onkeyup="search()">
 {f"<table id='table'>{rows}</table>" if records else "No data 💤"}
 </div>
@@ -291,9 +318,7 @@ if(localStorage.getItem("dark")==="true") {{
 </html>
 """
 
-# =========================
-# ADD
-# =========================
+# ================= ADD =================
 @app.post("/add")
 def add(
     level: str = Form(...),
@@ -304,7 +329,6 @@ def add(
 ):
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("""
         INSERT INTO homework (date, level, subject, homework, student, priority)
         VALUES (?, ?, ?, ?, ?, ?)
@@ -316,14 +340,11 @@ def add(
         student.strip(),
         1 if priority else 0
     ))
-
     conn.commit()
     conn.close()
     return RedirectResponse("/", status_code=303)
 
-# =========================
-# DELETE
-# =========================
+# ================= DELETE =================
 @app.post("/delete/{record_id}")
 def delete(record_id: int):
     conn = get_connection()
@@ -333,9 +354,7 @@ def delete(record_id: int):
     conn.close()
     return RedirectResponse("/", status_code=303)
 
-# =========================
-# EXPORT CSV
-# =========================
+# ================= EXPORT =================
 @app.get("/export")
 def export():
     records = load_records()
@@ -349,4 +368,4 @@ def export():
 
     output.seek(0)
     return StreamingResponse(output, media_type="text/csv",
-        headers={{"Content-Disposition": "attachment; filename=homework.csv"}})
+        headers={"Content-Disposition": "attachment; filename=homework.csv"})
