@@ -17,7 +17,6 @@ def hash_pw(pw):
 def init_db():
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -25,20 +24,16 @@ def init_db():
         password TEXT
     )
     """)
-
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS homework (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
         date TEXT,
-        level TEXT,
-        subject TEXT,
         homework TEXT,
         student TEXT,
         priority INTEGER DEFAULT 0
     )
     """)
-
     conn.commit()
     conn.close()
 
@@ -48,17 +43,14 @@ init_db()
 def load_records(user_id):
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("""
     SELECT id,date,homework,student,priority
     FROM homework
     WHERE user_id=?
     ORDER BY priority DESC,id DESC
     """,(user_id,))
-
     rows = cursor.fetchall()
     conn.close()
-
     return [{
         "ID":r[0],
         "Date":r[1],
@@ -70,21 +62,15 @@ def load_records(user_id):
 def get_counts(user_id):
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("""
     SELECT student,COUNT(*)
     FROM homework
     WHERE user_id=?
     GROUP BY student
     """,(user_id,))
-
     data = dict(cursor.fetchall())
     conn.close()
     return data
-
-def get_priority_student(records):
-    priority_students = [r["Student"] for r in records if r["Priority"]]
-    return priority_students[0] if priority_students else "None 🎉"
 
 # ================= AUTH =================
 def auth_page(title, link):
@@ -93,36 +79,12 @@ def auth_page(title, link):
     <head>
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
     <style>
-    body {{
-        font-family:'Fredoka';
-        background:#eef2ff;
-        display:flex;
-        justify-content:center;
-        align-items:center;
-        height:100vh;
-    }}
-    .card {{
-        background:white;
-        padding:30px;
-        border-radius:20px;
-        width:320px;
-        text-align:center;
-    }}
-    input {{
-        width:100%;
-        padding:12px;
-        margin:10px 0;
-        border-radius:14px;
-        border:2px solid #ddd;
-    }}
-    button {{
-        width:100%;
-        padding:12px;
-        border:none;
-        border-radius:14px;
-        background:#6366f1;
-        color:white;
-    }}
+    *{{font-family:'Fredoka';}}
+    body{{background:#eef2ff;display:flex;justify-content:center;align-items:center;height:100vh;}}
+    .card{{background:white;padding:30px;border-radius:20px;width:320px;
+    box-shadow:0 10px 25px rgba(0,0,0,.1);text-align:center;}}
+    input{{width:100%;padding:12px;margin:10px 0;border-radius:14px;border:2px solid #ddd;}}
+    button{{width:100%;padding:12px;border:none;border-radius:14px;background:#6366f1;color:white;}}
     </style>
     </head>
     <body>
@@ -147,17 +109,14 @@ def login_page():
 def login(username: str = Form(...), password: str = Form(...)):
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("SELECT id FROM users WHERE username=? AND password=?",
                    (username, hash_pw(password)))
     user = cursor.fetchone()
     conn.close()
-
     if user:
         res = RedirectResponse("/",303)
-        res.set_cookie("user_id", str(user[0]), httponly=True)
+        res.set_cookie("user_id", str(user[0]))
         return res
-
     return RedirectResponse("/login",303)
 
 @app.get("/signup", response_class=HTMLResponse)
@@ -168,13 +127,10 @@ def signup_page():
 def signup(username: str = Form(...), password: str = Form(...)):
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("INSERT INTO users VALUES (NULL,?,?)",
                    (username, hash_pw(password)))
-
     conn.commit()
     conn.close()
-
     return RedirectResponse("/login",303)
 
 @app.get("/logout")
@@ -186,7 +142,6 @@ def logout():
 # ================= MAIN =================
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
-
     user_id = request.cookies.get("user_id")
     if not user_id:
         return RedirectResponse("/login")
@@ -197,7 +152,6 @@ def home(request: Request):
     total = len(records)
     unique = len(counts)
     priority_count = len([r for r in records if r["Priority"]])
-    priority_student = get_priority_student(records)
 
     rows = "".join(f"""
     <tr>
@@ -205,9 +159,9 @@ def home(request: Request):
     <td>{r['Homework']}</td>
     <td>{r['Student']}</td>
     <td>
-        <form action="/delete/{r['ID']}" method="post">
-            <button class="delete">✕</button>
-        </form>
+    <form action="/delete/{r['ID']}" method="post">
+    <button class="delete">✕</button>
+    </form>
     </td>
     </tr>
     """ for r in records)
@@ -216,116 +170,101 @@ def home(request: Request):
 <html>
 <head>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
-
 <style>
-body {{
-    font-family:'Fredoka';
-    background:linear-gradient(135deg,#eef2ff,#fdf4ff);
-    padding:30px;
+*{{font-family:'Fredoka';box-sizing:border-box;}}
+
+body{{
+background:#f5f6fb;
+padding:30px;
 }}
 
-.container {{
-    max-width:1100px;
-    margin:auto;
+.container{{
+max-width:1100px;
+margin:auto;
+display:flex;
+flex-direction:column;
+gap:25px;
 }}
 
-.header {{
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    margin-bottom:20px;
+.header{{
+display:flex;
+justify-content:space-between;
+align-items:center;
+margin-bottom:10px;
 }}
 
-.logout-btn {{
-    padding:10px 16px;
-    border-radius:12px;
-    background:#6366f1;
-    color:white;
-    border:none;
+.card{{
+background:white;
+padding:20px;
+border-radius:20px;
+box-shadow:0 8px 20px rgba(0,0,0,.08);
 }}
 
-.grid {{
-    display:grid;
-    grid-template-columns:repeat(3,1fr);
-    gap:20px;
+.grid{{
+display:grid;
+grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+gap:20px;
 }}
 
-.card {{
-    background:white;
-    padding:20px;
-    border-radius:20px;
+.big{{font-size:28px;color:#6366f1;}}
+
+input{{
+border-radius:14px;
+padding:12px;
+border:2px solid #ddd;
+width:100%;
+margin:8px 0;
 }}
 
-.big {{
-    font-size:28px;
-    color:#6366f1;
+button{{
+border-radius:12px;
+padding:8px 14px;
+border:none;
+background:#6366f1;
+color:white;
+cursor:pointer;
 }}
 
-input {{
-    width:100%;
-    padding:12px;
-    border-radius:14px;
-    border:2px solid #ddd;
-    margin:6px 0;
+.delete{{background:#ef4444;}}
+
+/* FIXED PRIORITY ALIGNMENT */
+.priority-row {{
+display:flex;
+align-items:center;
+gap:8px;
+margin-top:8px;
 }}
 
-button {{
-    border-radius:12px;
-    padding:10px 14px;
-    border:none;
-    background:#6366f1;
-    color:white;
-    cursor:pointer;
-}}
-
-.delete {{
-    background:#ef4444;
-}}
-
-.checkbox {{
-    display:flex;
-    align-items:center;
-    gap:8px;
-    margin-top:10px;
+.priority-row input {{
+width:auto;
 }}
 
 .records-header {{
-    background:#6366f1;
-    color:white;
-    padding:16px;
-    border-radius:16px 16px 0 0;
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-}}
-
-.table-box {{
-    background:white;
-    border-radius:0 0 16px 16px;
-    padding:10px;
+background:#6366f1;
+color:white;
+padding:16px;
+border-radius:16px;
+display:flex;
+justify-content:space-between;
+align-items:center;
+margin-bottom:12px;
 }}
 
 table {{
-    width:100%;
-    border-collapse:collapse;
+width:100%;
+border-collapse:collapse;
+}}
+
+th,td {{
+padding:12px;
+text-align:left;
 }}
 
 th {{
-    position:sticky;
-    top:0;
-    background:#6366f1;
-    color:white;
-    padding:10px;
+background:#6366f1;
+color:white;
 }}
 
-td {{
-    padding:10px;
-    border-bottom:1px solid #eee;
-}}
-
-tr:hover {{
-    background:#f9fafb;
-}}
 </style>
 </head>
 
@@ -334,7 +273,7 @@ tr:hover {{
 
 <div class="header">
 <h1>📚 Homework Tracker</h1>
-<a href="/logout"><button class="logout-btn">Logout</button></a>
+<a href="/logout"><button>Logout</button></a>
 </div>
 
 <div class="grid">
@@ -346,10 +285,10 @@ tr:hover {{
 <div class="card">
 <h3>Add Record</h3>
 <form method="post" action="/add">
-<input name="homework" placeholder="Homework" required>
-<input name="student" placeholder="Student" required>
+<input name="homework" placeholder="Homework">
+<input name="student" placeholder="Student">
 
-<div class="checkbox">
+<div class="priority-row">
 <input type="checkbox" name="priority">
 <label>Priority</label>
 </div>
@@ -360,17 +299,11 @@ tr:hover {{
 </div>
 
 <div class="card">
-<h3>Priority Student</h3>
-<b>{priority_student}</b>
-</div>
-
-<div class="card" style="padding:0; overflow:hidden;">
 <div class="records-header">
-<h3>Records</h3>
+<h3 style="margin:0;">Records</h3>
 <a href="/export"><button style="background:white;color:#6366f1;">Export</button></a>
 </div>
 
-<div class="table-box">
 <table>
 <tr>
 <th>Date</th>
@@ -380,7 +313,6 @@ tr:hover {{
 </tr>
 {rows}
 </table>
-</div>
 </div>
 
 </div>
@@ -394,21 +326,17 @@ def add(request: Request,
 homework: str = Form(...),
 student: str = Form(...),
 priority: str = Form(None)):
-
     user_id = request.cookies.get("user_id")
 
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("""
-    INSERT INTO homework VALUES (NULL,?,?,?,?,?,?,?)
+    INSERT INTO homework VALUES (NULL,?,?,?,?,?)
     """,(user_id,
         datetime.now().strftime("%Y-%m-%d"),
-        "", "",  # removed level & subject
         homework,
         student,
         1 if priority else 0))
-
     conn.commit()
     conn.close()
 
@@ -417,14 +345,11 @@ priority: str = Form(None)):
 # ================= DELETE =================
 @app.post("/delete/{id}")
 def delete(request: Request, id: int):
-
     user_id = request.cookies.get("user_id")
 
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("DELETE FROM homework WHERE id=? AND user_id=?", (id,user_id))
-
     conn.commit()
     conn.close()
 
