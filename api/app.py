@@ -47,27 +47,27 @@ def load_records(user_id):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-    SELECT id, date, homework, student, priority
+    SELECT id,date,homework,student,priority
     FROM homework
     WHERE user_id=?
-    ORDER BY priority DESC, id DESC
+    ORDER BY priority DESC,id DESC
     """,(user_id,))
     rows = cursor.fetchall()
     conn.close()
 
     return [{
-        "ID": r[0],
-        "Date": r[1],
-        "Homework": r[2],
-        "Student": r[3],
-        "Priority": r[4]
+        "ID":r[0],
+        "Date":r[1],
+        "Homework":r[2],
+        "Student":r[3],
+        "Priority":r[4]
     } for r in rows]
 
 def get_counts(user_id):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-    SELECT student, COUNT(*)
+    SELECT student,COUNT(*)
     FROM homework
     WHERE user_id=?
     GROUP BY student
@@ -81,14 +81,38 @@ def auth_page(title, link):
     return f"""
     <html>
     <head>
-    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
     <style>
-    *{{font-family:'Fredoka';}}
-    body{{background:#eef2ff;display:flex;justify-content:center;align-items:center;height:100vh;}}
-    .card{{background:white;padding:30px;border-radius:20px;width:320px;
-    box-shadow:0 10px 25px rgba(0,0,0,.1);text-align:center;}}
-    input{{width:100%;padding:12px;margin:10px 0;border-radius:14px;border:2px solid #ddd;}}
-    button{{width:100%;padding:12px;border:none;border-radius:14px;background:#6366f1;color:white;}}
+    body {{
+        background:#eef2ff;
+        display:flex;
+        justify-content:center;
+        align-items:center;
+        height:100vh;
+        font-family:sans-serif;
+    }}
+    .card {{
+        background:white;
+        padding:30px;
+        border-radius:20px;
+        width:320px;
+        text-align:center;
+        box-shadow:0 10px 25px rgba(0,0,0,.1);
+    }}
+    input {{
+        width:100%;
+        padding:12px;
+        margin:10px 0;
+        border-radius:14px;
+        border:2px solid #ddd;
+    }}
+    button {{
+        width:100%;
+        padding:12px;
+        border:none;
+        border-radius:14px;
+        background:#6366f1;
+        color:white;
+    }}
     </style>
     </head>
     <body>
@@ -120,7 +144,7 @@ def login(username: str = Form(...), password: str = Form(...)):
 
     if user:
         res = RedirectResponse("/",303)
-        res.set_cookie("user_id", str(user[0]))
+        res.set_cookie("user_id", str(user[0]), httponly=True)
         return res
 
     return RedirectResponse("/login",303)
@@ -157,110 +181,122 @@ def home(request: Request):
 
     total = len(records)
     unique = len(counts)
-    priority_count = len([r for r in records if r["Priority"]])
+    priority_students = [r for r in records if r["Priority"]]
 
-    # PRIORITY SECTION
-    priority_rows = "".join(f"""
-    <tr>
-        <td>{r['Student']}</td>
-        <td>{r['Homework']}</td>
-    </tr>
-    """ for r in records if r["Priority"])
-
+    # table rows
     rows = "".join(f"""
     <tr>
-    <td>{r['Date']}</td>
-    <td>{r['Homework']}</td>
-    <td>{r['Student']} <span class="badge">{counts.get(r['Student'],0)}</span></td>
-    <td>
-    <form action="/delete/{r['ID']}" method="post">
-    <button class="delete">✕</button>
-    </form>
-    </td>
+        <td>{r['Date']}</td>
+        <td>{r['Homework']}</td>
+        <td>{r['Student']} 
+            <span class="badge">{counts.get(r['Student'],0)}</span>
+        </td>
+        <td>
+            <form action="/delete/{r['ID']}" method="post">
+                <button class="delete">✕</button>
+            </form>
+        </td>
     </tr>
     """ for r in records)
+
+    # priority rows
+    priority_html = "".join(f"""
+    <div class="pill">{r['Student']} - {r['Homework']}</div>
+    """ for r in priority_students)
 
     return f"""
 <html>
 <head>
-<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
 <style>
-*{{font-family:'Fredoka';box-sizing:border-box;}}
-
-body{{
-background:linear-gradient(135deg,#fdf2ff,#eef2ff);
-padding:30px;
+body {{
+    background:#f8fafc;
+    padding:30px;
+    font-family:sans-serif;
 }}
 
-.container{{max-width:1100px;margin:auto;}}
+.container {{max-width:1100px;margin:auto;}}
 
-.card{{
-background:white;
-padding:20px;
-border-radius:20px;
-margin-bottom:20px;
-box-shadow:0 8px 20px rgba(0,0,0,.08);
-transition:.2s;
+.card {{
+    background:white;
+    padding:20px;
+    border-radius:20px;
+    margin-bottom:20px;
+    box-shadow:0 8px 20px rgba(0,0,0,.08);
 }}
 
-.card:hover{{
-transform:translateY(-5px);
-box-shadow:0 12px 30px rgba(0,0,0,.12);
+.grid {{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+    gap:20px;
 }}
 
-.grid{{
-display:grid;
-grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
-gap:20px;
+.big {{
+    font-size:28px;
+    color:#6366f1;
 }}
 
-.big{{font-size:28px;color:#6366f1;}}
-
-.badge{{
-background:#ef4444;
-color:white;
-padding:4px 8px;
-border-radius:999px;
-margin-left:6px;
+input {{
+    border-radius:14px;
+    padding:10px;
+    border:2px solid #ddd;
+    width:100%;
+    margin:6px 0;
 }}
 
-input{{
-border-radius:14px;
-padding:10px;
-border:2px solid #ddd;
-width:100%;
-margin:6px 0;
+button {{
+    border-radius:12px;
+    padding:8px 12px;
+    border:none;
+    background:#6366f1;
+    color:white;
 }}
 
-button{{
-border-radius:12px;
-padding:8px 12px;
-border:none;
-background:#6366f1;
-color:white;
-cursor:pointer;
+.delete {{background:#ef4444;}}
+
+.badge {{
+    background:#ef4444;
+    color:white;
+    padding:4px 8px;
+    border-radius:999px;
+    margin-left:6px;
 }}
 
-.delete{{background:#ef4444;}}
-
-th{{
-position:sticky;
-top:0;
-background:#6366f1;
-color:white;
-padding:10px;
+.pill {{
+    background:#fde68a;
+    padding:8px 12px;
+    border-radius:999px;
+    display:inline-block;
+    margin:5px;
 }}
 
-td{{padding:10px;border-bottom:1px solid #eee;}}
+table {{
+    width:100%;
+    border-collapse:collapse;
+}}
 
-tr:hover{{background:#f9fafb;}}
+th {{
+    position:sticky;
+    top:0;
+    background:#6366f1;
+    color:white;
+    padding:10px;
+}}
+
+td {{
+    padding:10px;
+    border-bottom:1px solid #eee;
+}}
+
+tr:hover {{
+    background:#f1f5f9;
+}}
 </style>
 </head>
 
 <body>
 <div class="container">
 
-<div style="display:flex;justify-content:space-between;align-items:center;">
+<div style="display:flex;justify-content:space-between;">
 <h1>Homework Tracker</h1>
 <a href="/logout"><button>Logout</button></a>
 </div>
@@ -268,44 +304,27 @@ tr:hover{{background:#f9fafb;}}
 <div class="grid">
 <div class="card">Total<div class="big">{total}</div></div>
 <div class="card">Students<div class="big">{unique}</div></div>
-<div class="card">Priority<div class="big">{priority_count}</div></div>
 </div>
 
 <div class="card">
-<h3>Priority Students</h3>
-{f"<table>{priority_rows}</table>" if priority_rows else "None 🎉"}
+<h3>⭐ Priority Students</h3>
+{priority_html if priority_html else "None 🎉"}
 </div>
 
 <div class="card">
 <h3>Add Record</h3>
 <form method="post" action="/add">
-<input name="homework" placeholder="Homework" required>
-<input name="student" placeholder="Student" required>
-
+<input name="homework" placeholder="Homework">
+<input name="student" placeholder="Student">
 <label style="display:flex;align-items:center;gap:6px;">
 <input type="checkbox" name="priority"> Priority
-</label>
-
-<br>
+</label><br><br>
 <button>Add</button>
 </form>
 </div>
 
 <div class="card">
-<div style="
-background:#6366f1;
-color:white;
-padding:14px 18px;
-border-radius:16px;
-display:flex;
-justify-content:space-between;
-align-items:center;
-margin-bottom:15px;
-">
-<h3 style="margin:0;">Records</h3>
-</div>
-
-<div style="background:#f9fafb;border-radius:16px;padding:10px;overflow-x:auto;">
+<h3>📋 Records</h3>
 <table>
 <tr>
 <th>Date</th>
@@ -315,7 +334,6 @@ margin-bottom:15px;
 </tr>
 {rows}
 </table>
-</div>
 </div>
 
 </div>
@@ -337,13 +355,11 @@ priority: str = Form(None)):
 
     cursor.execute("""
     INSERT INTO homework VALUES (NULL,?,?,?,?,?)
-    """,(
-        user_id,
+    """,(user_id,
         datetime.now().strftime("%Y-%m-%d"),
         homework,
         student,
-        1 if priority else 0
-    ))
+        1 if priority else 0))
 
     conn.commit()
     conn.close()
@@ -358,7 +374,10 @@ def delete(request: Request, id: int):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("DELETE FROM homework WHERE id=? AND user_id=?", (id,user_id))
+    cursor.execute(
+        "DELETE FROM homework WHERE id=? AND user_id=?",
+        (id,user_id)
+    )
 
     conn.commit()
     conn.close()
