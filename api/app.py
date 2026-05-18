@@ -76,19 +76,22 @@ def get_counts(user_id):
     conn.close()
     return data
 
-def get_daily_counts(user_id):
+def get_history(user_id):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-    SELECT date, COUNT(*)
+    SELECT date, level, subject, homework, student
     FROM homework
     WHERE user_id=?
-    GROUP BY date
-    ORDER BY date
-    """,(user_id,))
-    data = cursor.fetchall()
+    ORDER BY date DESC
+    """, (user_id,))
+    rows = cursor.fetchall()
     conn.close()
-    return data
+
+    history = {}
+    for r in rows:
+        history.setdefault(r[0], []).append(r[1:])
+    return history
 
 def get_top(counts):
     if not counts:
@@ -104,8 +107,8 @@ def auth_page(title, link):
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
     <style>
     body {{
-        font-family: 'Fredoka';
-        background: linear-gradient(135deg,#fdf2ff,#eef2ff);
+        font-family:'Fredoka';
+        background:linear-gradient(135deg,#fdf2ff,#eef2ff);
         display:flex;
         justify-content:center;
         align-items:center;
@@ -200,15 +203,12 @@ def home(request: Request):
 
     records = load_records(user_id)
     counts = get_counts(user_id)
-    daily = get_daily_counts(user_id)
+    history = get_history(user_id)
 
     total = len(records)
     unique = len(counts)
     priority_count = len([r for r in records if r["Priority"]])
     top_student, top_score = get_top(counts)
-
-    labels = [d[0] for d in daily]
-    values = [d[1] for d in daily]
 
     rows = "".join(f"""
     <tr>
@@ -225,11 +225,19 @@ def home(request: Request):
     </tr>
     """ for r in records)
 
+    history_html = "".join(f"""
+    <div class="history-day">
+        <h4 onclick="toggleHistory('{date}')">{date}</h4>
+        <div id="h-{date}" class="history-content">
+            {''.join(f"<p>{h[0]} | {h[1]} | {h[2]} | {h[3]}</p>" for h in items)}
+        </div>
+    </div>
+    """ for date, items in history.items())
+
     return f"""
 <html>
 <head>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
 *{{font-family:'Fredoka';box-sizing:border-box;}}
@@ -247,11 +255,6 @@ padding:20px;
 border-radius:24px;
 margin-bottom:20px;
 box-shadow:0 10px 25px rgba(0,0,0,.08);
-transition:.2s;
-}}
-
-.card:hover {{
-transform:translateY(-5px);
 }}
 
 .grid {{
@@ -262,9 +265,7 @@ gap:20px;
 
 .big {{
 font-size:30px;
-background:linear-gradient(45deg,#a78bfa,#6366f1);
--webkit-background-clip:text;
--webkit-text-fill-color:transparent;
+color:#6366f1;
 }}
 
 input {{
@@ -286,7 +287,7 @@ button {{
 border-radius:14px;
 padding:10px 14px;
 border:none;
-background:linear-gradient(45deg,#a78bfa,#6366f1);
+background:#6366f1;
 color:white;
 cursor:pointer;
 }}
@@ -301,33 +302,30 @@ border-radius:999px;
 margin-left:6px;
 }}
 
-table {{
-width:100%;
-border-collapse:separate;
-border-spacing:0 10px;
-}}
-
-thead th {{
-position:sticky;
-top:0;
-background:#f3e8ff;
-padding:12px;
-}}
-
-tbody tr {{
-background:white;
-border-radius:12px;
-}}
-
-td {{
-padding:12px;
-}}
-
 .header {{
 display:flex;
 justify-content:space-between;
 align-items:center;
 }}
+
+.history-day {{
+background:#faf5ff;
+padding:10px;
+border-radius:12px;
+margin-bottom:10px;
+}}
+
+.history-day h4 {{
+margin:0;
+cursor:pointer;
+color:#7c3aed;
+}}
+
+.history-content {{
+display:none;
+padding-top:8px;
+}}
+
 </style>
 </head>
 
@@ -347,13 +345,15 @@ align-items:center;
 </div>
 
 <div class="card">
-<h3>Daily Entries</h3>
-<canvas id="chart"></canvas>
+<h3>Top Student</h3>
+<b>{top_student}</b> ({top_score})
 </div>
 
 <div class="card">
-<h3>Top Student</h3>
-<b>{top_student}</b> ({top_score})
+<h3 onclick="toggleAllHistory()" style="cursor:pointer;">📜 History</h3>
+<div id="historyBox" style="display:none;">
+{history_html}
+</div>
 </div>
 
 <div class="card">
@@ -377,7 +377,7 @@ align-items:center;
 <div class="card">
 
 <div style="
-background:linear-gradient(45deg,#a78bfa,#6366f1);
+background:#6366f1;
 color:white;
 padding:16px;
 border-radius:16px;
@@ -398,7 +398,6 @@ Export CSV
 <div style="background:#faf5ff;border-radius:16px;padding:12px;max-height:400px;overflow:auto;">
 
 <table>
-<thead>
 <tr>
 <th>Date</th>
 <th>Level</th>
@@ -407,12 +406,7 @@ Export CSV
 <th>Student</th>
 <th>Action</th>
 </tr>
-</thead>
-
-<tbody>
 {rows}
-</tbody>
-
 </table>
 
 </div>
@@ -422,13 +416,15 @@ Export CSV
 </div>
 
 <script>
-new Chart(document.getElementById('chart'), {{
-type:'line',
-data:{{
-labels:{labels},
-datasets:[{{label:'Entries per Day',data:{values},borderColor:'#6366f1',fill:false}}]
-}}
-}});
+function toggleHistory(date){
+let el = document.getElementById("h-"+date);
+el.style.display = el.style.display === "none" ? "block" : "none";
+}
+
+function toggleAllHistory(){
+let box = document.getElementById("historyBox");
+box.style.display = box.style.display === "none" ? "block" : "none";
+}
 </script>
 
 </body>
