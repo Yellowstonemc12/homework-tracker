@@ -17,6 +17,7 @@ def hash_pw(pw):
 def init_db():
     conn = get_connection()
     cursor = conn.cursor()
+
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -24,6 +25,7 @@ def init_db():
         password TEXT
     )
     """)
+
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS homework (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -34,6 +36,7 @@ def init_db():
         priority INTEGER DEFAULT 0
     )
     """)
+
     conn.commit()
     conn.close()
 
@@ -43,14 +46,17 @@ init_db()
 def load_records(user_id):
     conn = get_connection()
     cursor = conn.cursor()
+
     cursor.execute("""
     SELECT id,date,homework,student,priority
     FROM homework
     WHERE user_id=?
     ORDER BY priority DESC,id DESC
     """,(user_id,))
+
     rows = cursor.fetchall()
     conn.close()
+
     return [{
         "ID":r[0],"Date":r[1],
         "Homework":r[2],
@@ -60,12 +66,14 @@ def load_records(user_id):
 def get_counts(user_id):
     conn = get_connection()
     cursor = conn.cursor()
+
     cursor.execute("""
     SELECT student,COUNT(*)
     FROM homework
     WHERE user_id=?
     GROUP BY student
     """,(user_id,))
+
     data = dict(cursor.fetchall())
     conn.close()
     return data
@@ -85,14 +93,17 @@ def login_page():
 def login(username: str = Form(...), password: str = Form(...)):
     conn = get_connection()
     cursor = conn.cursor()
+
     cursor.execute("SELECT id FROM users WHERE username=? AND password=?",
                    (username, hash_pw(password)))
     user = cursor.fetchone()
     conn.close()
+
     if user:
         res = RedirectResponse("/",303)
         res.set_cookie("user_id", str(user[0]))
         return res
+
     return RedirectResponse("/login",303)
 
 @app.get("/logout")
@@ -116,7 +127,7 @@ def home(request: Request):
     priority_count = len([r for r in records if r["Priority"]])
 
     priority_students = [r["Student"] for r in records if r["Priority"]]
-    priority_display = ", ".join(set(priority_students)) if priority_students else "None 🎉"
+    priority_display = ", ".join(set(priority_students)) if priority_students else "None"
 
     rows = "".join(f"""
     <tr>
@@ -135,6 +146,7 @@ def home(request: Request):
 <html>
 <head>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
+
 <style>
 *{{font-family:'Fredoka';box-sizing:border-box;}}
 
@@ -149,7 +161,13 @@ padding:30px;
 display:flex;
 justify-content:space-between;
 align-items:center;
-margin-bottom:25px;
+margin-bottom:30px;
+}}
+
+.title{{
+display:flex;
+align-items:center;
+gap:10px;
 }}
 
 .card{{
@@ -178,6 +196,11 @@ color:white;
 cursor:pointer;
 }}
 
+button:hover{{
+transform:translateY(-1px);
+box-shadow:0 4px 10px rgba(99,102,241,.3);
+}}
+
 .delete{{background:#ef4444;}}
 
 input{{
@@ -188,11 +211,17 @@ border-radius:12px;
 border:2px solid #ddd;
 }}
 
-.priority-row{{
+.priority-label{{
 display:flex;
 align-items:center;
 gap:8px;
-margin-top:8px;
+margin-top:10px;
+}}
+
+.priority-label input{{
+width:16px;
+height:16px;
+margin:0;
 }}
 
 .records-header{{
@@ -203,33 +232,32 @@ background:linear-gradient(90deg,#6366f1,#a78bfa);
 color:white;
 padding:14px 18px;
 border-radius:14px;
-margin-bottom:12px;
+margin-bottom:15px;
 }}
 
-table{{
-width:100%;
-border-collapse:collapse;
-}}
+table{{width:100%;border-collapse:collapse;}}
 
-th,td{{
-padding:12px;
-text-align:left;
-}}
+th,td{{padding:12px;text-align:left;}}
 
-th{{
-background:#f3f4f6;
-}}
+th{{background:#f3f4f6;}}
 
 tr:hover{{background:#f9fafb;}}
 
 </style>
 </head>
-<body>
 
+<body>
 <div class="container">
 
 <div class="header">
-<h1>📚 Homework Tracker</h1>
+<div class="title">
+<svg width="28" height="28" viewBox="0 0 24 24">
+<path d="M4 6H20V18H4V6Z" fill="#6366f1"/>
+<path d="M4 6L12 12L20 6" stroke="white" stroke-width="2"/>
+</svg>
+<h1>Homework Tracker</h1>
+</div>
+
 <a href="/logout"><button>Logout</button></a>
 </div>
 
@@ -241,14 +269,15 @@ tr:hover{{background:#f9fafb;}}
 
 <div class="card">
 <h3>Add Record</h3>
+
 <form method="post" action="/add">
 <input name="homework" placeholder="Homework">
 <input name="student" placeholder="Student">
 
-<div class="priority-row">
+<label class="priority-label">
 <input type="checkbox" name="priority">
-<label>Priority</label>
-</div>
+<span>Priority</span>
+</label>
 
 <br>
 <button>Add ✨</button>
@@ -264,7 +293,9 @@ tr:hover{{background:#f9fafb;}}
 
 <div class="records-header">
 <h3>Records</h3>
-<a href="/export"><button style="background:white;color:#6366f1;">Export</button></a>
+<a href="/export">
+<button style="background:white;color:#6366f1;">Export</button>
+</a>
 </div>
 
 <table>
@@ -298,12 +329,14 @@ priority: str = Form(None)):
 
     conn = get_connection()
     cursor = conn.cursor()
+
     cursor.execute("""
     INSERT INTO homework VALUES (NULL,?,?,?,?,?)
     """,(user_id,
         datetime.now().strftime("%Y-%m-%d"),
         homework,student,
         1 if priority else 0))
+
     conn.commit()
     conn.close()
 
@@ -313,11 +346,15 @@ priority: str = Form(None)):
 @app.post("/delete/{id}")
 def delete(request: Request, id: int):
     user_id = request.cookies.get("user_id")
+
     conn = get_connection()
     cursor = conn.cursor()
+
     cursor.execute("DELETE FROM homework WHERE id=? AND user_id=?", (id,user_id))
+
     conn.commit()
     conn.close()
+
     return RedirectResponse("/",303)
 
 # ================= EXPORT =================
@@ -329,12 +366,11 @@ def export(request: Request):
     output = io.StringIO()
     writer = csv.writer(output)
 
-    # FIXED DATE FORMAT (Excel friendly)
     writer.writerow(["Date","Homework","Student","Priority"])
 
     for r in records:
         writer.writerow([
-            r["Date"],   # already YYYY-MM-DD → Excel safe
+            r["Date"],
             r["Homework"],
             r["Student"],
             "Yes" if r["Priority"] else "No"
