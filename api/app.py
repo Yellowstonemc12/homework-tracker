@@ -1,8 +1,10 @@
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 import sqlite3
 from datetime import datetime
 import hashlib
+import io
+import csv
 
 app = FastAPI()
 DB_PATH = "/tmp/homework.db"
@@ -17,7 +19,6 @@ def hash_pw(pw):
 def init_db():
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -25,7 +26,6 @@ def init_db():
         password TEXT
     )
     """)
-
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS homework (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,7 +36,6 @@ def init_db():
         priority INTEGER DEFAULT 0
     )
     """)
-
     conn.commit()
     conn.close()
 
@@ -50,16 +49,11 @@ def load_records(user_id):
     SELECT id,date,homework,student,priority
     FROM homework
     WHERE user_id=?
-    ORDER BY id DESC
+    ORDER BY priority DESC,id DESC
     """,(user_id,))
     rows = cursor.fetchall()
     conn.close()
-
-    return [{
-        "ID":r[0],"Date":r[1],
-        "Homework":r[2],"Student":r[3],
-        "Priority":r[4]
-    } for r in rows]
+    return rows
 
 def get_counts(user_id):
     conn = get_connection()
@@ -76,9 +70,9 @@ def get_counts(user_id):
 
 def get_priority_student(records):
     for r in records:
-        if r["Priority"]:
-            return r["Student"]
-    return "None"
+        if r[4] == 1:
+            return r[3]
+    return "None 🎉"
 
 # ================= AUTH =================
 def auth_page(title, link):
@@ -87,10 +81,8 @@ def auth_page(title, link):
     <head>
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
     <style>
-    *{{font-family:'Fredoka';}}
-    body{{background:#eef2ff;display:flex;justify-content:center;align-items:center;height:100vh;}}
-    .card{{background:white;padding:30px;border-radius:20px;width:320px;
-    box-shadow:0 10px 25px rgba(0,0,0,.1);text-align:center;}}
+    body{{font-family:'Fredoka';background:#eef2ff;display:flex;justify-content:center;align-items:center;height:100vh;}}
+    .card{{background:white;padding:30px;border-radius:20px;width:320px;box-shadow:0 10px 25px rgba(0,0,0,.1);text-align:center;}}
     input{{width:100%;padding:12px;margin:10px 0;border-radius:14px;border:2px solid #ddd;}}
     button{{width:100%;padding:12px;border:none;border-radius:14px;background:#6366f1;color:white;}}
     </style>
@@ -121,7 +113,6 @@ def login(username: str = Form(...), password: str = Form(...)):
                    (username, hash_pw(password)))
     user = cursor.fetchone()
     conn.close()
-
     if user:
         res = RedirectResponse("/",303)
         res.set_cookie("user_id", str(user[0]))
@@ -130,7 +121,7 @@ def login(username: str = Form(...), password: str = Form(...)):
 
 @app.get("/signup", response_class=HTMLResponse)
 def signup_page():
-    return auth_page("Sign Up", '<a href="/login">Back to login</a>')
+    return auth_page("Sign Up", '<a href="/login">Back</a>')
 
 @app.post("/signup")
 def signup(username: str = Form(...), password: str = Form(...)):
@@ -148,6 +139,24 @@ def logout():
     res.delete_cookie("user_id")
     return res
 
+# ================= EXPORT =================
+@app.get("/export")
+def export(request: Request):
+    user_id = request.cookies.get("user_id")
+    records = load_records(user_id)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Date","Homework","Student","Priority"])
+
+    for r in records:
+        writer.writerow([r[1], r[2], r[3], r[4]])
+
+    output.seek(0)
+
+    return StreamingResponse(output, media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=data.csv"})
+
 # ================= MAIN =================
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
@@ -160,16 +169,17 @@ def home(request: Request):
 
     total = len(records)
     unique = len(counts)
-    priority_count = len([r for r in records if r["Priority"]])
+    priority_count = len([r for r in records if r[4]])
+
     priority_student = get_priority_student(records)
 
     rows = "".join(f"""
     <tr>
-    <td>{r['Date']}</td>
-    <td>{r['Homework']}</td>
-    <td>{r['Student']}</td>
+    <td>{r[1]}</td>
+    <td>{r[2]}</td>
+    <td>{r[3]}</td>
     <td>
-    <form action="/delete/{r['ID']}" method="post">
+    <form action="/delete/{r[0]}" method="post">
     <button class="delete">✕</button>
     </form>
     </td>
@@ -181,53 +191,58 @@ def home(request: Request):
 <head>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
 <style>
-*{{font-family:'Fredoka';box-sizing:border-box;}}
-body{{background:#f3f4f6;padding:30px;}}
+body{{font-family:'Fredoka';background:#f5f3ff;padding:30px;}}
 .container{{max-width:1100px;margin:auto;}}
-
-.header{{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;}}
-
-.grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-bottom:20px;}}
 
 .card{{
 background:white;
-padding:20px;
+padding:25px;
 border-radius:20px;
-box-shadow:0 6px 15px rgba(0,0,0,.08);
-margin-bottom:20px;
+margin-bottom:30px;
+box-shadow:0 10px 25px rgba(0,0,0,.08);
 }}
 
-.big{{font-size:26px;color:#6366f1;}}
+.grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;}}
 
-input{{width:100%;padding:10px;margin:6px 0;border-radius:12px;border:2px solid #ddd;}}
+.big{{font-size:28px;color:#6366f1;}}
 
-button{{border:none;border-radius:12px;padding:8px 14px;background:#6366f1;color:white;cursor:pointer;}}
+input{{width:100%;padding:12px;margin:10px 0;border-radius:14px;border:2px solid #ddd;}}
 
+button{{border:none;border-radius:12px;padding:10px 16px;background:#6366f1;color:white;cursor:pointer;}}
 .delete{{background:#ef4444;}}
 
-.priority-row{{display:flex;align-items:center;gap:8px;margin-top:6px;}}
+.header{{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;}}
 
-.table-box{{background:#6366f1;padding:16px;border-radius:20px;margin-top:20px;}}
+/* FIXED CHECKBOX ALIGN */
+.checkbox-row {{
+display:flex;
+align-items:center;
+gap:8px;
+margin-top:10px;
+}}
 
-.table-inner{{background:white;border-radius:14px;padding:10px;}}
+.table-header {{
+background:linear-gradient(90deg,#6366f1,#8b5cf6);
+color:white;
+padding:15px;
+border-radius:16px;
+display:flex;
+justify-content:space-between;
+align-items:center;
+margin-bottom:10px;
+}}
 
 table{{width:100%;border-collapse:collapse;}}
-
-th{{padding:10px;text-align:left;background:#6366f1;color:white;position:sticky;top:0;}}
-
-td{{padding:10px;border-bottom:1px solid #eee;}}
-
+th,td{{padding:12px;text-align:left;}}
 </style>
 </head>
+
 <body>
 <div class="container">
 
 <div class="header">
 <h1>📚 Homework Tracker</h1>
-<div style="display:flex;gap:10px;">
-<a href="/history"><button>History</button></a>
 <a href="/logout"><button>Logout</button></a>
-</div>
 </div>
 
 <div class="grid">
@@ -239,14 +254,16 @@ td{{padding:10px;border-bottom:1px solid #eee;}}
 <div class="card">
 <h3>Add Record</h3>
 <form method="post" action="/add">
-<input name="homework" placeholder="Homework">
-<input name="student" placeholder="Student">
-<div class="priority-row">
-<input type="checkbox" name="priority">
-<label>Priority</label>
+<input name="homework" placeholder="Homework" required>
+<input name="student" placeholder="Student" required>
+
+<div class="checkbox-row">
+<input type="checkbox" name="priority" id="priority">
+<label for="priority">Priority</label>
 </div>
+
 <br>
-<button>Add</button>
+<button>Add ✨</button>
 </form>
 </div>
 
@@ -255,13 +272,12 @@ td{{padding:10px;border-bottom:1px solid #eee;}}
 <b>{priority_student}</b>
 </div>
 
-<div class="table-box">
-<div style="display:flex;justify-content:space-between;color:white;margin-bottom:10px;">
-<h3>Records</h3>
+<div class="card">
+<div class="table-header">
+<h3 style="margin:0;">Records</h3>
 <a href="/export"><button style="background:white;color:#6366f1;">Export</button></a>
 </div>
 
-<div class="table-inner">
 <table>
 <tr>
 <th>Date</th>
@@ -272,56 +288,11 @@ td{{padding:10px;border-bottom:1px solid #eee;}}
 {rows}
 </table>
 </div>
-</div>
 
 </div>
 </body>
 </html>
 """
-
-# ================= HISTORY PAGE =================
-@app.get("/history", response_class=HTMLResponse)
-def history(request: Request):
-    user_id = request.cookies.get("user_id")
-    if not user_id:
-        return RedirectResponse("/login")
-
-    records = load_records(user_id)
-
-    rows = "".join(f"""
-    <tr>
-    <td>{r['Date']}</td>
-    <td>{r['Homework']}</td>
-    <td>{r['Student']}</td>
-    </tr>
-    """ for r in records)
-
-    return f"""
-    <html>
-    <head>
-    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
-    <style>
-    *{{font-family:'Fredoka';}}
-    body{{background:#f3f4f6;padding:30px;}}
-    .container{{max-width:900px;margin:auto;}}
-    table{{width:100%;border-collapse:collapse;background:white;border-radius:12px;overflow:hidden;}}
-    th{{background:#6366f1;color:white;padding:10px;}}
-    td{{padding:10px;border-bottom:1px solid #eee;}}
-    </style>
-    </head>
-    <body>
-    <div class="container">
-    <h1>📜 History</h1>
-    <a href="/"><button>Back</button></a>
-    <br><br>
-    <table>
-    <tr><th>Date</th><th>Homework</th><th>Student</th></tr>
-    {rows}
-    </table>
-    </div>
-    </body>
-    </html>
-    """
 
 # ================= ADD =================
 @app.post("/add")
@@ -329,22 +300,19 @@ def add(request: Request,
 homework: str = Form(...),
 student: str = Form(...),
 priority: str = Form(None)):
+    user_id = request.cookies.get("user_id")
 
     if not homework or not student:
         return RedirectResponse("/",303)
 
-    user_id = request.cookies.get("user_id")
-
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("""
     INSERT INTO homework VALUES (NULL,?,?,?,?,?)
     """,(user_id,
         datetime.now().strftime("%Y-%m-%d"),
         homework,student,
         1 if priority else 0))
-
     conn.commit()
     conn.close()
 
