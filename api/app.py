@@ -1,10 +1,8 @@
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 import sqlite3
 from datetime import datetime
 import hashlib
-import csv
-from io import StringIO
 
 app = FastAPI()
 DB_PATH = "/tmp/homework.db"
@@ -50,17 +48,14 @@ init_db()
 def load_records(user_id):
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("""
     SELECT id,date,level,subject,homework,student,priority
     FROM homework
     WHERE user_id=?
     ORDER BY priority DESC,id DESC
     """,(user_id,))
-
     rows = cursor.fetchall()
     conn.close()
-
     return [{
         "ID":r[0],"Date":r[1],"Level":r[2],
         "Subject":r[3],"Homework":r[4],
@@ -70,20 +65,15 @@ def load_records(user_id):
 def get_counts(user_id):
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("""
     SELECT student,COUNT(*)
     FROM homework
     WHERE user_id=?
     GROUP BY student
     """,(user_id,))
-
     data = dict(cursor.fetchall())
     conn.close()
     return data
-
-def get_priority(records):
-    return [r for r in records if r["Priority"]]
 
 # ================= AUTH =================
 def auth_page(title, link):
@@ -92,12 +82,37 @@ def auth_page(title, link):
     <head>
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
     <style>
-    *{{font-family:'Fredoka',sans-serif;}}
-    body{{background:#eef2ff;display:flex;justify-content:center;align-items:center;height:100vh;}}
-    .card{{background:white;padding:30px;border-radius:20px;width:320px;
-    box-shadow:0 10px 25px rgba(0,0,0,.1);text-align:center;}}
-    input{{width:100%;padding:12px;margin:10px 0;border-radius:14px;border:2px solid #ddd;}}
-    button{{width:100%;padding:12px;border:none;border-radius:14px;background:#4f46e5;color:white;}}
+    *{{font-family:'Fredoka';}}
+    body{{
+        background:#eef2ff;
+        display:flex;
+        justify-content:center;
+        align-items:center;
+        height:100vh;
+    }}
+    .card{{
+        background:white;
+        padding:30px;
+        border-radius:20px;
+        width:320px;
+        box-shadow:0 10px 25px rgba(0,0,0,.1);
+        text-align:center;
+    }}
+    input{{
+        width:100%;
+        padding:12px;
+        margin:10px 0;
+        border-radius:14px;
+        border:2px solid #ddd;
+    }}
+    button{{
+        width:100%;
+        padding:12px;
+        border:none;
+        border-radius:14px;
+        background:#6366f1;
+        color:white;
+    }}
     </style>
     </head>
     <body>
@@ -122,16 +137,14 @@ def login_page():
 def login(username: str = Form(...), password: str = Form(...)):
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("SELECT id FROM users WHERE username=? AND password=?",
                    (username, hash_pw(password)))
-
     user = cursor.fetchone()
     conn.close()
 
     if user:
         res = RedirectResponse("/",303)
-        res.set_cookie("user_id", str(user[0]))
+        res.set_cookie("user_id", str(user[0]), httponly=True)
         return res
 
     return RedirectResponse("/login",303)
@@ -144,13 +157,10 @@ def signup_page():
 def signup(username: str = Form(...), password: str = Form(...)):
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("INSERT INTO users VALUES (NULL,?,?)",
                    (username, hash_pw(password)))
-
     conn.commit()
     conn.close()
-
     return RedirectResponse("/login",303)
 
 @app.get("/logout")
@@ -169,19 +179,18 @@ def home(request: Request):
 
     records = load_records(user_id)
     counts = get_counts(user_id)
-    priority = get_priority(records)
 
     total = len(records)
     unique = len(counts)
-    priority_count = len(priority)
+    priority_count = len([r for r in records if r["Priority"]])
 
     rows = "".join(f"""
-    <tr>
+    <tr class="row">
     <td>{r['Date']}</td>
     <td>{r['Level']}</td>
     <td>{r['Subject']}</td>
     <td>{r['Homework']}</td>
-    <td>{r['Student']} <span class="badge">{counts.get(r['Student'],0)}</span></td>
+    <td>{r['Student']}</td>
     <td>
     <form action="/delete/{r['ID']}" method="post">
     <button class="delete">✕</button>
@@ -190,111 +199,86 @@ def home(request: Request):
     </tr>
     """ for r in records)
 
-    priority_rows = "".join(f"""
-    <tr>
-    <td>{r['Student']}</td>
-    <td>{r['Homework']}</td>
-    <td>{r['Subject']}</td>
-    </tr>
-    """ for r in priority)
-
     return f"""
 <html>
 <head>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
-
 <style>
-*{{font-family:'Fredoka',sans-serif;box-sizing:border-box;}}
+*{{font-family:'Fredoka';box-sizing:border-box;}}
 
-:root{{
---bg:#f5f7fb;
---card:#ffffff;
---accent:#4f46e5;
---text:#222;
-}}
-
-body{{
-background:var(--bg);
-color:var(--text);
-padding:30px;
-}}
+body{{background:#f8fafc;padding:30px;}}
 
 .container{{max-width:1100px;margin:auto;}}
 
 .card{{
-background:var(--card);
-padding:22px;
+background:white;
+padding:20px;
 border-radius:20px;
 margin-bottom:20px;
-box-shadow:0 8px 20px rgba(0,0,0,0.08);
-transition:0.2s;
+box-shadow:0 8px 20px rgba(0,0,0,.08);
 }}
 
-.card:hover{{transform:translateY(-3px);}}
+.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;}}
 
-.grid{{
-display:grid;
-grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
-gap:20px;
-}}
+.big{{font-size:28px;color:#6366f1;}}
 
-.big{{font-size:30px;color:var(--accent);}}
-
+/* inputs */
 input{{
-padding:12px;
-border-radius:12px;
+border-radius:14px;
+padding:10px;
 border:2px solid #ddd;
-margin:6px 0;
 width:100%;
+margin:6px 0;
+}}
+
+.checkbox-label{{
+display:flex;
+align-items:center;
+gap:6px;
 }}
 
 button{{
-padding:10px 16px;
 border-radius:12px;
+padding:8px 12px;
 border:none;
-background:var(--accent);
+background:#6366f1;
 color:white;
 cursor:pointer;
 }}
 
 .delete{{background:#ef4444;}}
 
-.badge{{
-background:#ef4444;
-color:white;
-padding:4px 8px;
-border-radius:999px;
-margin-left:6px;
-}}
-
+/* table */
 table{{width:100%;border-collapse:collapse;}}
 
 th{{
-background:var(--accent);
-color:white;
-padding:10px;
 position:sticky;
 top:0;
-}}
-
-td{{
+background:#6366f1;
+color:white;
 padding:10px;
-border-bottom:1px solid #eee;
 }}
 
-tr:hover{{background:rgba(0,0,0,0.05);}}
+td{{padding:10px;border-bottom:1px solid #eee;}}
 
-label{{
-display:flex;
-align-items:center;
-gap:6px;
-margin-top:8px;
+/* row animation */
+.row:hover{{
+background:#f1f5ff;
+transition:0.2s;
+}}
+
+/* error popup */
+.error {{
+background:#fee2e2;
+color:#991b1b;
+padding:10px;
+border-radius:10px;
+margin-bottom:10px;
 }}
 </style>
 </head>
 
 <body>
-
 <div class="container">
 
 <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -309,21 +293,21 @@ margin-top:8px;
 </div>
 
 <div class="card">
-<h3>Priority Students</h3>
-{f"<table><tr><th>Student</th><th>Homework</th><th>Subject</th></tr>{priority_rows}</table>" if priority else "None 🎉"}
-</div>
-
-<div class="card">
 <h3>Add Record</h3>
-<form method="post" action="/add">
-<input name="level" placeholder="Level">
-<input name="subject" placeholder="Subject">
-<input name="homework" placeholder="Homework">
-<input name="student" placeholder="Student">
-<label>
+
+<div id="error" class="error" style="display:none;">Please fill all fields</div>
+
+<form method="post" action="/add" onsubmit="return validate()">
+<input id="level" name="level" placeholder="Level">
+<input id="subject" name="subject" placeholder="Subject">
+<input id="homework" name="homework" placeholder="Homework">
+<input id="student" name="student" placeholder="Student">
+
+<label class="checkbox-label">
 <input type="checkbox" name="priority"> Priority
 </label>
-<br><br>
+
+<br>
 <button>Add</button>
 </form>
 </div>
@@ -331,27 +315,20 @@ margin-top:8px;
 <div class="card">
 
 <div style="
-background:var(--accent);
+background:#6366f1;
 color:white;
-padding:14px 18px;
+padding:14px;
 border-radius:16px;
 display:flex;
 justify-content:space-between;
 align-items:center;
-margin-bottom:15px;
+margin-bottom:10px;
 ">
 <h3 style="margin:0;">Records</h3>
-
-<a href="/export">
-<button style="background:white;color:var(--accent);font-weight:bold;">
-Export CSV
-</button>
-</a>
-
+<a href="/export"><button style="background:white;color:#6366f1;">Export</button></a>
 </div>
 
-<div style="background:#f9fafb;border-radius:16px;padding:10px;overflow-x:auto;max-height:400px;">
-
+<div style="max-height:400px;overflow:auto;">
 <table>
 <tr>
 <th>Date</th>
@@ -363,12 +340,25 @@ Export CSV
 </tr>
 {rows}
 </table>
-
 </div>
 
 </div>
 
 </div>
+
+<script>
+function validate(){{
+let fields=["level","subject","homework","student"];
+for(let f of fields){{
+if(!document.getElementById(f).value){{
+document.getElementById("error").style.display="block";
+return false;
+}}
+}}
+return true;
+}}
+</script>
+
 </body>
 </html>
 """
@@ -386,7 +376,6 @@ priority: str = Form(None)):
 
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("""
     INSERT INTO homework VALUES (NULL,?,?,?,?,?,?,?)
     """,(user_id,
@@ -407,39 +396,9 @@ def delete(request: Request, id: int):
 
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("DELETE FROM homework WHERE id=? AND user_id=?", (id,user_id))
 
     conn.commit()
     conn.close()
 
     return RedirectResponse("/",303)
-
-# ================= EXPORT =================
-@app.get("/export")
-def export(request: Request):
-    user_id = request.cookies.get("user_id")
-    records = load_records(user_id)
-
-    output = StringIO()
-    writer = csv.writer(output)
-
-    writer.writerow(["Date","Level","Subject","Homework","Student","Priority"])
-
-    for r in records:
-        writer.writerow([
-            r["Date"],
-            r["Level"],
-            r["Subject"],
-            r["Homework"],
-            r["Student"],
-            r["Priority"]
-        ])
-
-    output.seek(0)
-
-    return StreamingResponse(
-        output,
-        media_type="text/csv",
-        headers={"Content-Disposition":"attachment; filename=homework.csv"}
-    )
