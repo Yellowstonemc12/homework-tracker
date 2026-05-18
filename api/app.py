@@ -176,6 +176,8 @@ def logout():
     res.delete_cookie("user_id")
     return res
 
+# (everything ABOVE stays EXACTLY the same)
+
 # ================= MAIN =================
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
@@ -190,7 +192,15 @@ def home(request: Request):
     total = len(records)
     unique = len(counts)
     priority_count = len([r for r in records if r["Priority"]])
-    top_student, top_score = get_top(counts)
+
+    # ⭐ priority rows
+    priority_rows = "".join(f"""
+    <tr>
+    <td>{r['Student']}</td>
+    <td>{r['Subject']}</td>
+    <td>{r['Homework']}</td>
+    </tr>
+    """ for r in records if r["Priority"])
 
     rows = "".join(f"""
     <tr>
@@ -275,11 +285,6 @@ color:white;
 </div>
 
 <div class="card">
-<h3>Top Student</h3>
-<b>{top_student}</b> ({top_score})
-</div>
-
-<div class="card">
 <form method="post" action="/add">
 <input name="level" placeholder="Level">
 <input name="subject" placeholder="Subject">
@@ -288,6 +293,23 @@ color:white;
 <label><input type="checkbox" name="priority"> Priority</label>
 <button>Add</button>
 </form>
+</div>
+
+<!-- ⭐ PRIORITY SECTION (NEW, replaces top student) -->
+<div class="card">
+<h3>⭐ Priority Students</h3>
+
+{f"""
+<table>
+<tr>
+<th>Student</th>
+<th>Subject</th>
+<th>Homework</th>
+</tr>
+{priority_rows}
+</table>
+""" if priority_rows else "<p>No priority students 🎉</p>"}
+
 </div>
 
 <div class="card">
@@ -304,40 +326,3 @@ color:white;
 </body>
 </html>
 """
-
-# ================= ADD =================
-@app.post("/add")
-def add(request: Request,
-level: str = Form(...),
-subject: str = Form(...),
-homework: str = Form(...),
-student: str = Form(...),
-priority: str = Form(None)):
-
-    user_id = request.cookies.get("user_id")
-
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-    INSERT INTO homework VALUES (NULL,?,?,?,?,?,?,?)
-    """,(user_id,
-        datetime.now().strftime("%Y-%m-%d"),
-        level,subject,homework,student,
-        1 if priority else 0))
-    conn.commit()
-    conn.close()
-
-    return RedirectResponse("/",303)
-
-# ================= DELETE =================
-@app.post("/delete/{id}")
-def delete(request: Request, id: int):
-    user_id = request.cookies.get("user_id")
-
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM homework WHERE id=? AND user_id=?", (id,user_id))
-    conn.commit()
-    conn.close()
-
-    return RedirectResponse("/",303)
