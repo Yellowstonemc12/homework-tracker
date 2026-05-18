@@ -76,20 +76,6 @@ def get_counts(user_id):
     conn.close()
     return data
 
-def get_daily_counts(user_id):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-    SELECT date, COUNT(*)
-    FROM homework
-    WHERE user_id=?
-    GROUP BY date
-    ORDER BY date
-    """,(user_id,))
-    data = cursor.fetchall()
-    conn.close()
-    return data
-
 def get_top(counts):
     if not counts:
         return ("None",0)
@@ -200,15 +186,11 @@ def home(request: Request):
 
     records = load_records(user_id)
     counts = get_counts(user_id)
-    daily = get_daily_counts(user_id)
 
     total = len(records)
     unique = len(counts)
     priority_count = len([r for r in records if r["Priority"]])
     top_student, top_score = get_top(counts)
-
-    labels = [d[0] for d in daily]
-    values = [d[1] for d in daily]
 
     rows = "".join(f"""
     <tr>
@@ -229,7 +211,6 @@ def home(request: Request):
 <html>
 <head>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
 *{{font-family:'Fredoka';box-sizing:border-box;}}
@@ -294,11 +275,6 @@ color:white;
 </div>
 
 <div class="card">
-<h3>📈 Daily Entries</h3>
-<canvas id="chart"></canvas>
-</div>
-
-<div class="card">
 <h3>Top Student</h3>
 <b>{top_student}</b> ({top_score})
 </div>
@@ -324,21 +300,6 @@ color:white;
 </div>
 
 </div>
-
-<script>
-new Chart(document.getElementById('chart'), {{
-type:'line',
-data:{{
-labels:{labels},
-datasets:[{{
-label:'Entries per Day',
-data:{values},
-borderColor:'#6366f1',
-fill:false
-}}]
-}}
-}});
-</script>
 
 </body>
 </html>
