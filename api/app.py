@@ -92,7 +92,7 @@ def auth_page(title, link):
     <head>
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
     <style>
-    *{{font-family:'Fredoka';}}
+    *{{font-family:'Fredoka',sans-serif;}}
     body{{background:#eef2ff;display:flex;justify-content:center;align-items:center;height:100vh;}}
     .card{{background:white;padding:30px;border-radius:20px;width:320px;
     box-shadow:0 10px 25px rgba(0,0,0,.1);text-align:center;}}
@@ -202,6 +202,7 @@ def home(request: Request):
 <html>
 <head>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
+
 <style>
 *{{font-family:'Fredoka',sans-serif;box-sizing:border-box;}}
 
